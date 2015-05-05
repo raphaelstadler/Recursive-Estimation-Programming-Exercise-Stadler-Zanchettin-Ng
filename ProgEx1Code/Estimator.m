@@ -69,12 +69,15 @@ function [posEst,oriEst,radiusEst, posVar,oriVar,radiusVar,estState] = Estimator
 %% Mode 1: Initialization
 if (tm == 0)
     % Do the initialization of your estimator here!
+    %uniform distribution between [-b1,b1]
+    b1 = knownConst.TranslationStartBound;
+    posEst = [unifrnd(-b1,b1) unifrnd(-b1,b1)];
+    posVar = [b1^2/3 b1^2/3];
+    %triangolar distribution between [-b2,b2]
+    b2 = knownConst.RotationStartBound;
+    oriEst = unifrnd(0,b2) + unifrnd(0,b2) -b2;
+    oriVar = b2^2/6;
     
-    % Replace the following:
-    posEst = [0 0];
-    oriEst = 0;
-    posVar = [0 0];
-    oriVar = 0;
     radiusEst = 0;
     radiusVar = 0;
     return;

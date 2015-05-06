@@ -70,16 +70,22 @@ function [posEst,oriEst,radiusEst, posVar,oriVar,radiusVar,estState] = Estimator
 if (tm == 0)
     % Do the initialization of your estimator here!
     %uniform distribution between [-b1,b1]
+    %posEst = [unifrnd(-b1,b1) , unifrnd(-b1,b1)];
     b1 = knownConst.TranslationStartBound;
-    posEst = [unifrnd(-b1,b1) unifrnd(-b1,b1)];
-    posVar = [b1^2/3 b1^2/3];
+    posEst = [0,0];
+    posVar = [(b1^2)/3 , (b1^2)/3];
     %triangolar distribution between [-b2,b2]
+    %oriEst = unifrnd(0,b2) + unifrnd(0,b2) - b2;
     b2 = knownConst.RotationStartBound;
-    oriEst = unifrnd(0,b2) + unifrnd(0,b2) -b2;
-    oriVar = b2^2/6;
-    
-    radiusEst = 0;
-    radiusVar = 0;
+    oriEst = 0;
+    oriVar = (b2^2)/6;
+    %radius W0 plups uniform distribution between [-b3,b3]
+    %radiusEst = knownConst.NominalWheelRadius + unifrnd(-b3,b3);
+    b3 = knownConst.WheelRadiusError;
+    radiusEst = knownConst.NominalWheelRadius;
+    radiusVar = (b3^2)/3;
+    %%TODO ??
+    estState = [posEst';oriEst;radiusEst];
     return;
 end
 
@@ -88,11 +94,38 @@ end
 % If we get this far tm is not equal to zero, and we are no longer
 % initializing.  Run the estimator.
 
-% Replace the following:
+B = knownConst.WheelBase;
+
+% x = [x,y,r,W]
+% TODO v = [];
+q = @(t,x) [   x(4)*actuate(1)*cos(actuate(2))*cos(x(3)) ;
+               x(4)*actuate(1)*cos(actuate(2))*sin(x(3)) ;
+               -x(4)*actuate(1)*sin(actuate(2))*x(3)/B   ;
+                0                                           ];
+A = [ 0, 0, -x(4)*actuate(1)*cos(actuate(2))*sin(x(3)), actuate(1)*cos(actuate(2))*cos(x(3)) ;
+      0, 0, x(4)*actuate(1)*cos(actuate(2))*cos(x(3)) , actuate(1)*cos(actuate(2))*sin(x(3));           
+      0, 0, -estState(4)*actuate(1)*sin(actuate(2))/B, -actuate(1)*sin(actuate(2))*estState(3)/B;
+      0, 0, 0, 0    ];
+  
+L = [];
+H = [];
+M = [];
+Q = [];
+R = [];
+
+%TODO... how to resolve between (k-1)T and tm=kT????
+tspan = [0,tm];
+[T,Y] = ode45(q,tspan,estState);
+
 posEst = [0 0];
 oriEst = 0;
-posVar = [0 0];
+
+posVar = [0,0];
 oriVar = 0;
+
 radiusEst = 0;
 radiusVar = 0;
+
+%% TODO ??
+estState = [posEst';oriEst;radiusEst];
 end

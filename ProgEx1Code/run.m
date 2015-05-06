@@ -73,8 +73,8 @@ N = size(tm,1);
 
 %% Run the Estimator
 
-% Initialize the estimator.  
-estState = [];
+% Initialize the estimator. % x = [x,y,r,W] 
+estState = [0;0;0;0];
 posEst = zeros(N,2);
 oriEst = zeros(N,1);
 radiusEst = zeros(N,1);

@@ -74,11 +74,11 @@ if (tm == 0)
     b1 = knownConst.TranslationStartBound;
     posEst = [0,0];
     posVar = [(b1^2)/3 , (b1^2)/3];
-    %triangolar distribution between [-b2,b2]
+    %uniform distribution between [-b2,b2]
     %oriEst = unifrnd(0,b2) + unifrnd(0,b2) - b2;
     b2 = knownConst.RotationStartBound;
     oriEst = 0;
-    oriVar = (b2^2)/6;
+    oriVar = (b2^2)/3;
     %radius W0 plups uniform distribution between [-b3,b3]
     %radiusEst = knownConst.NominalWheelRadius + unifrnd(-b3,b3);
     b3 = knownConst.WheelRadiusError;
@@ -103,67 +103,102 @@ end
 %% Mode 2: Estimator iteration.
 % If we get this far tm is not equal to zero, and we are no longer
 % initializing.  Run the estimator.
+% x = [x,y,r,W]
+% TODO v = [gamma];
 
 B = knownConst.WheelBase;
 
-% x = [x,y,r,W]
-% TODO v = [gamma];
 q = @(t,x) [ x(4)*actuate(1)*cos(actuate(2))*cos(x(3));
              x(4)*actuate(1)*cos(actuate(2))*sin(x(3));
                     -x(4)*actuate(1)*sin(actuate(2))/B;
                                                      0];
                                                  
 A = @(x) [ 0, 0, -x(4)*actuate(1)*cos(actuate(2))*sin(x(3)), actuate(1)*cos(actuate(2))*cos(x(3));
-             0, 0,  x(4)*actuate(1)*cos(actuate(2))*cos(x(3)), actuate(1)*cos(actuate(2))*sin(x(3));           
-             0, 0,                                          0,        -actuate(1)*sin(actuate(2))/B;
-             0, 0,                                          0,                                    0];
+           0, 0,  x(4)*actuate(1)*cos(actuate(2))*cos(x(3)), actuate(1)*cos(actuate(2))*sin(x(3));           
+           0, 0,                                          0,        -actuate(1)*sin(actuate(2))/B;
+           0, 0,                                          0,                                    0];
+
 % TODO it is right that gamma is a noise??
 L = @(x) [actuate(1)*cos(actuate(2))*cos(x(3)); 
-            actuate(1)*cos(actuate(2))*sin(x(3)); 
-                   -actuate(1)*sin(actuate(2))/B; 
-                                               0];
-                                    
-H = @(x) [                         0,                          0, 1, 0;
-            x(1)/(sqrt(x(1)^2+x(2)^2)), x(2)/(sqrt(x(1)^2+x(2)^2)), 0, 0];
-M = eye(2);
+          actuate(1)*cos(actuate(2))*sin(x(3)); 
+                 -actuate(1)*sin(actuate(2))/B; 
+                                             0];
+                                         
+Q = 0;%(knownConst.WheelRadiusError^2)/3;
 
-Q = knownConst.WheelRadiusError;
-R = [knownConst.CompassNoise,                          0; 
-                           0, (knownConst.DistNoise^2)/6];
 
-%TODO... how to resolve between (k-1)T and tm=kT????
+%TODO This is my idea to resolve between (k-1)T and tm=kT????
 tspan = [estState.Time,tm];
 
 xm = estState.Est;
-[T,Y] = ode45(q,tspan,xm);
-xp = Y(end,:);
+[~,Y] = ode45(q,tspan,xm);
+xp = Y(end,:)';
 
 Pm = estState.Var;
-[T,Y] = ode45(@(t,X)mRiccati(t, X, A(xp), L(xp), Q), tspan, Pm(:));
-Pp = Y(end,:);
+[~,Y] = ode45(@(t,X)mRiccati(t, X, A(xp), L(xp), Q), tspan, Pm(:));
+Pp = Y(end,:)';
 Pp = reshape(Pp, size(A(xp)));
 
-posEst = [xp(1) xp(2)];
-oriEst = xp(3);
 
-posVar = [0,0];
-oriVar = 0;
+if(not(sense(1) == Inf))
+    if(not(sense(2) == Inf))
+        h = @(x) [ x(3);
+           sqrt(x(1)^2+x(2)^2)];
+        H = @(x) [                          0,                          0, 1, 0;
+           x(1)/(sqrt(x(1)^2+x(2)^2)), x(2)/(sqrt(x(1)^2+x(2)^2)), 0, 0];
+        M = eye(2);
+        R = [ knownConst.CompassNoise,                          0; 
+                            0, (knownConst.DistNoise^2)/6];
+        K = Pp*H(xp).'/(H(xp)*Pp*H(xp).' + M*R*M.');
 
-radiusEst = xp(4);
-radiusVar = 0;
+        xm = xp + K*(sense' - h(xp));
+        Pm = (eye(4) - K*H(xp))*Pp;
+    else
+        h = @(x) x(3);
+        H = @(x) [0, 0, 1, 0];
+        M = 1;
+        R = knownConst.CompassNoise;
+        K = Pp*H(xp).'/(H(xp)*Pp*H(xp).' + M*R*M.');
+        xm = xp + K*(sense(1) - h(xp));
+        Pm = (1 - K*H(xp))*Pp;  
+    end
+else
+    if(not(sense == Inf))
+        h = @(x) sqrt(x(1)^2+x(2)^2);
+        H = @(x) [x(1)/(sqrt(x(1)^2+x(2)^2)), x(2)/(sqrt(x(1)^2+x(2)^2)), 0, 0];
+        M = 1;
+        R = (knownConst.DistNoise^2)/6;
+        K = Pp*H(xp).'/(H(xp)*Pp*H(xp).' + M*R*M.');
+        xm = xp + K*(sense(2) - h(xp));
+        Pm = (1 - K*H(xp))*Pp;
+    else
+        xm = xp;
+        Pm = Pp;
+    end 
+end
+
+posEst = [xm(1) xm(2)];
+posVar = [Pm(1,1),Pm(2,2)];
+oriEst = xm(3);
+oriVar = Pm(3,3);
+radiusEst = xm(4);
+radiusVar = Pm(4,4);
 
 %%TODO ??
-    field1 = 'Est';
-    value1 = {xp};
-    field2 = 'Var';
-    value2 = {Pp};
-    field3 = 'Time';
-    value3 = {tm};    
-    estState = struct(field1,value1,field2,value2,field3,value3);
+field1 = 'Est';
+value1 = {xm};
+field2 = 'Var';
+value2 = {Pm};
+field3 = 'Time';
+value3 = {tm};
+estState = struct(field1,value1,field2,value2,field3,value3);
 end
 
 function dP = mRiccati(t, P, A, L, Q)
-    P = reshape(P, size(A)); %Convert from "n^2"-by-1 to "n"-by-"n"
-    dP = A.'*P + P*A + L*Q*L.'; %Determine derivative
-    dP = dP(:); %Convert from "n"-by-"n" to "n^2"-by-1
+    %Convert from "n^2"-by-1 to "n"-by-"n"
+    P = reshape(P, size(A));
+    %Determine derivative
+    dP = A*P + P*A.' + L*Q*L.'; 
+    %Convert from "n"-by-"n" to "n^2"-by-1
+    dP = dP(:); 
 end

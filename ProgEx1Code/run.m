@@ -88,6 +88,9 @@ radiusVar = zeros(N,1);
 for n = 2:N
     [posEst(n,:),oriEst(n),radiusEst(n),posVar(n,:),oriVar(n),radiusVar(n),estState] = ...
         Estimator(estState,input(n,:),sense(n,:),tm(n),knownConst,designPart);
+    clc;
+    disp(['Executing ''run'' for estimator design part #',num2str(designPart),'.']);
+    disp([num2str(n/N*100),'% completed']);
 end
 
 

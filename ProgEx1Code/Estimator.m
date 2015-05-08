@@ -101,8 +101,10 @@ if (tm == 0)
                        0,         0, oriVar,         0;
                        0,         0,      0, radiusVar] };
     field3 = 'Time';
-    value3 = {tm};    
-    estState = struct(field1,value1,field2,value2,field3,value3);
+    value3 = {tm};
+    value4 = [0.1;0.1;0.01;0];
+    field4 = 'noiseVar';
+    estState = struct(field1,value1,field2,value2,field3,value3,field4,value4);
     return;
 end
 
@@ -133,10 +135,7 @@ if designPart==1
     %L = @(x) zeros(4);
     %Q = zeros(4);
     L = @(x) eye(4);
-    Q = zeros(4,4);
-    Q(1,1) = .3;
-    Q(2,2) = .3;
-    Q(3,3) = .03;
+    Q = diag(estState.noiseVar);
     
 elseif designPart==2
     % A model of the process noise is available. This model takes
@@ -172,7 +171,7 @@ xp = Yx(end,:)';
 Pm = estState.Var;
 % Solve Riccati Matrix Equation:
 % P_dot = A*P + P*A' + L*Q*L'
-[~,Yp] = ode45(@(t,X)mRiccati(t, X, A(xp), L(xp), Q,Yx,tspan), tspan, Pm(:));
+[~,Yp] = ode45(@(t,X)mRiccati(t, X, A, L, Q,Yx,tspan), tspan, Pm(:));
 Pp = Yp(end,:)';
 Pp = reshape(Pp, size(A(xp)));
 
@@ -247,14 +246,21 @@ field2 = 'Var';
 value2 = {Pm};
 field3 = 'Time';
 value3 = {tm};
-estState = struct(field1,value1,field2,value2,field3,value3);
+value4 = estState.noiseVar;
+% if(diag((xm-xp)*(xm-xp)') == zeros(4,1))
+%     value4 = estState.noiseVar;
+% else
+%     value4 = diag((xm-xp)*(xm-xp)');
+% end
+field4 = 'noiseVar';
+estState = struct(field1,value1,field2,value2,field3,value3,field4,value4);
 end
 
 function dP = mRiccati(t, P, A, L, Q, Y, tspan)
-%     detat = (tspan(2)-tspan(1))/(size(Y,1)-1); 
-%     xx = interp1(tspan(1):detat:tspan(2),Y,t);
-%     A = A(xx');
-%     L = L(xx');
+    detat = (tspan(2)-tspan(1))/(size(Y,1)-1); 
+    xx = interp1(tspan(1):detat:tspan(2),Y,t);
+    A = A(xx');
+    L = L(xx');
     P = reshape(P, size(A)); %Convert from "n^2"-by-1 to "n"-by-"n"
     dP = A*P + P*A.' + L*Q*L.'; %Determine derivative
     dP = dP(:); %Convert from "n"-by-"n" to "n^2"-by-1

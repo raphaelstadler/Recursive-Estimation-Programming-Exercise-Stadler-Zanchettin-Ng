@@ -62,6 +62,6 @@ const.AngleInputPSD = 0.1; % const.AngleInputNoise = Q_r
 % following bound (\bar{p}), in meters.
 const.TranslationStartBound = 1.0; % const.TranslationStartBound = \bar{p}
 
-% The nominal orientation is also 0, and has a triangular distribution with
+% The nominal orientation is also 0, and has a uniform distribution with
 % the following bound (\bar{r}), in rad.
 const.RotationStartBound = pi/2; % const.RotationStartBound = \bar{r}

@@ -116,8 +116,8 @@ B = knownConst.WheelBase;
 % TODO v = [gamma];
 % X = [x,y,r,W]
 % q(t,x) = X_dot    (Note that, actuate u is constant during time period, noise v set to zero)
-q = @(t,x) [ x(4)*actuate(1)*cos(actuate(2))*cos(x(3)); % x_dot = s_v*cos(u_r*cos(r) = W*u_v*cos(u_r)*cos(r)
-             x(4)*actuate(1)*cos(actuate(2))*sin(x(3)); % y_dot = s_t*sin(r) = W*u_v*cos(u_r)*cos(r)
+q = @(t,x) [ x(4)*actuate(1)*cos(actuate(2))*cos(x(3)); % x_dot = s_v*cos(u_r)*cos(r) = W*u_v*cos(u_r)*cos(r)
+             x(4)*actuate(1)*cos(actuate(2))*sin(x(3)); % y_dot = s_t*sin(r) = W*u_v*cos(u_r)*sin(r)
                     -x(4)*actuate(1)*sin(actuate(2))/B; % r_dot = s_r = -s_v*sin(u_r)/B = -W*u_v*sin(u_r)/B
                                                      0];% W_dot = 0
                                 
@@ -129,17 +129,35 @@ A = @(x) [ 0, 0, -x(4)*actuate(1)*cos(actuate(2))*sin(x(3)), actuate(1)*cos(actu
 
 % TODO it is right that gamma is a noise??
 % TODO: Probably not, it should be considered as a constant bias
-% L = partial_der(q,v)
-% L = @(x) [actuate(1)*cos(actuate(2))*cos(x(3)); 
-%           actuate(1)*cos(actuate(2))*sin(x(3)); 
-%                  -actuate(1)*sin(actuate(2))/B; 
-%                                              0];
-L = 0;
 
-% Q = variance gamma                                         
-% Q = (knownConst.WheelRadiusError^2)/3;
-% Q = E[ v(t) ]
-Q = 0;
+if designPart==1
+    % The motion of the robot is corrupted by process noise, the properties
+    % of which are unknown.
+    % .: Do not take any process noise into account in the model
+    L = @(x) zeros(4,2);
+    Q = zeros(2,2);
+    
+elseif designPart==2
+    % A model of the process noise is available. This model takes
+    % non-idealities in the actuation mechanism into account
+    
+    % L = partial_der(q,v) | v = 0, where v = [v_v, v_r]'
+      L = @(x) x(4)*actuate(1)*...
+          [ cos(actuate(2))*cos(x(3)),  -sin(actuate(2))*cos(x(3)); % partial_der(q(1),v)
+            cos(actuate(2))*sin(x(3)),  -sin(actuate(2))*sin(x(3)); % partial_der(q(2),v)
+            -sin(actuate(2))/B,         -cos(actuate(2))/B;         % partial_der(q(3),v)
+            0,                          0                        ]; % partial_der(q(4),v)
+    
+    % Additionally to the information of the EKF in design part 1 above,
+    % this EKF has acces to the constants Q_v and Q_r
+    Q_v = knownConst.VelocityInputPSD;
+    Q_r = knownConst.AngleInputPSD;
+    Q = [Q_v,   0;
+         0,     Q_r];
+else
+    error('Invalid designPart chosen. Choose designPart==1 or designPart==2.');
+end
+
 
 %TODO This is my idea to resolve between (k-1)T and tm=kT????
 tspan = [estState.Time,tm];
@@ -153,7 +171,7 @@ xp = Yx(end,:)';
 Pm = estState.Var;
 % Solve Riccati Matrix Equation:
 % P_dot = A*P + P*A' + L*Q*L'
-[~,Yp] = ode45(@(t,X)mRiccati(t, X, A(xp), L, Q), tspan, Pm(:));
+[~,Yp] = ode45(@(t,X)mRiccati(X, A(xp), L(xp), Q), tspan, Pm(:));
 Pp = Yp(end,:)';
 Pp = reshape(Pp, size(A(xp)));
 
@@ -166,8 +184,8 @@ if(not(sense(1) == Inf))
     % Measurement for sensor 2 available:
     % Both sensors provide useable measurements.
         % h_k = h(x(kT),w(kT)) = z(kT)
-        h = @(x) [ x(3);
-           sqrt(x(1)^2+x(2)^2)];
+        h = @(x) [  x(3);
+                    sqrt(x(1)^2+x(2)^2)];
        
         % H_k = partial_der(h_k, x)
         H = @(x) [  0,                          0,                          1, 0;
@@ -260,7 +278,7 @@ value3 = {tm};
 estState = struct(field1,value1,field2,value2,field3,value3);
 end
 
-function dP = mRiccati(t, P, A, L, Q)
+function dP = mRiccati(P, A, L, Q)
     P = reshape(P, size(A)); %Convert from "n^2"-by-1 to "n"-by-"n"
     dP = A*P + P*A.' + L*Q*L.'; %Determine derivative
     dP = dP(:); %Convert from "n"-by-"n" to "n^2"-by-1

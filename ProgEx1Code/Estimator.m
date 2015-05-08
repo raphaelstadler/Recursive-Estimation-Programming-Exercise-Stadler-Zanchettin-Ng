@@ -70,20 +70,17 @@ function [posEst,oriEst,radiusEst, posVar,oriVar,radiusVar,estState] = Estimator
 if (tm == 0)
     % Do the initialization of your estimator here!
     %uniform distribution between [-b1,b1]
-    %posEst = [unifrnd(-b1,b1) , unifrnd(-b1,b1)];
     b1 = knownConst.TranslationStartBound;
     posEst = [0,0];
     posVar = [(b1^2)/3 , (b1^2)/3];
     %uniform distribution between [-b2,b2]
-    %oriEst = unifrnd(0,b2) + unifrnd(0,b2) - b2;
     b2 = knownConst.RotationStartBound;
     oriEst = 0;
     oriVar = (b2^2)/3;
-    %radius W0 plups uniform distribution between [-b3,b3]
-    %radiusEst = knownConst.NominalWheelRadius + unifrnd(-b3,b3);
-    b3 = knownConst.WheelRadiusError;
+    %radius W0 plups uniform distribution between [-gamma,gamma]
+    gamma = knownConst.WheelRadiusError;
     radiusEst = knownConst.NominalWheelRadius;
-    radiusVar = (b3^2)/3;
+    radiusVar = (gamma^2)/3;
     
     %%TODO ??
     field1 = 'Est';
@@ -119,24 +116,26 @@ A = @(x) [ 0, 0, -x(4)*actuate(1)*cos(actuate(2))*sin(x(3)), actuate(1)*cos(actu
            0, 0,                                          0,                                    0];
 
 % TODO it is right that gamma is a noise??
-L = @(x) [actuate(1)*cos(actuate(2))*cos(x(3)); 
-          actuate(1)*cos(actuate(2))*sin(x(3)); 
-                 -actuate(1)*sin(actuate(2))/B; 
-                                             0];
+% L = @(x) [actuate(1)*cos(actuate(2))*cos(x(3)); 
+%           actuate(1)*cos(actuate(2))*sin(x(3)); 
+%                  -actuate(1)*sin(actuate(2))/B; 
+%                                              0];
                                          
-Q = 0;%(knownConst.WheelRadiusError^2)/3;
+% Q = (knownConst.WheelRadiusError^2)/3;
 
+L = 0;
+Q = 0;
 
 %TODO This is my idea to resolve between (k-1)T and tm=kT????
 tspan = [estState.Time,tm];
 
 xm = estState.Est;
-[~,Y] = ode45(q,tspan,xm);
-xp = Y(end,:)';
+[~,Yx] = ode45(q,tspan,xm);
+xp = Yx(end,:)';
 
 Pm = estState.Var;
-[~,Y] = ode45(@(t,X)mRiccati(t, X, A(xp), L(xp), Q), tspan, Pm(:));
-Pp = Y(end,:)';
+[~,Yp] = ode45(@(t,X)mRiccati(t, X, A(Yx((((t - estState.Time)/(tm - estState.Time))*(size(Yx,1)-1) + 1),:)'), L, Q), tspan, Pm(:));
+Pp = Yp(end,:)';
 Pp = reshape(Pp, size(A(xp)));
 
 

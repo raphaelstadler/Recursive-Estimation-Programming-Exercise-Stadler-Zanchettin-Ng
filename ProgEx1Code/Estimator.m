@@ -68,21 +68,31 @@ function [posEst,oriEst,radiusEst, posVar,oriVar,radiusVar,estState] = Estimator
 
 %% Mode 1: Initialization
 if (tm == 0)
-    % Do the initialization of your estimator here!
-    %uniform distribution between [-b1,b1]
-    b1 = knownConst.TranslationStartBound;
-    posEst = [0,0];
-    posVar = [(b1^2)/3 , (b1^2)/3];
-    %uniform distribution between [-b2,b2]
-    b2 = knownConst.RotationStartBound;
-    oriEst = 0;
-    oriVar = (b2^2)/3;
-    %radius W0 plups uniform distribution between [-gamma,gamma]
+    % posEst / posVar
+    % =====================
+    % Initial position estimation posEst = [x(0), y(0)] = [x0, y0]
+    % (x0, y0) uniformly distributed between [-p_bar,p_bar]
+    p_bar = knownConst.TranslationStartBound;
+    x0 = 0;     %   E[ unifrnd(-p_bar,p_bar) ]
+    y0 = 0;     %   E[ unifrnd(-p_bar,p_bar) ]
+    posEst = [x0, y0];
+    
+    posVar = [(p_bar^2)/3, (p_bar^2)/3];    % Var(unif(-p_bar,p_bar)) can be calculated like that
+    
+    % oriEst
+    % =====================
+    r_bar = knownConst.RotationStartBound;
+    oriEst = 0; %   E[ unifrnd(-r_bar, r_bar) ]
+    
+    oriVar = (r_bar^2)/3;
+    
+    % radiusEst / radiusVar
+    % =====================
     gamma = knownConst.WheelRadiusError;
-    radiusEst = knownConst.NominalWheelRadius;
+    radiusEst = knownConst.NominalWheelRadius;  % E[ W0 + unifrnd(-gamma,gamma) ]
+    
     radiusVar = (gamma^2)/3;
     
-    %%TODO ??
     field1 = 'Est';
     value1 = {[posEst';oriEst;radiusEst]};
     field2 = 'Var';
@@ -100,30 +110,33 @@ end
 %% Mode 2: Estimator iteration.
 % If we get this far tm is not equal to zero, and we are no longer
 % initializing.  Run the estimator.
-% x = [x,y,r,W]
-% TODO v = [gamma];
 
 B = knownConst.WheelBase;
 
-q = @(t,x) [ x(4)*actuate(1)*cos(actuate(2))*cos(x(3));
-             x(4)*actuate(1)*cos(actuate(2))*sin(x(3));
-                    -x(4)*actuate(1)*sin(actuate(2))/B;
-                                                     0];
-                                                 
-A = @(x) [ 0, 0, -x(4)*actuate(1)*cos(actuate(2))*sin(x(3)), actuate(1)*cos(actuate(2))*cos(x(3));
-           0, 0,  x(4)*actuate(1)*cos(actuate(2))*cos(x(3)), actuate(1)*cos(actuate(2))*sin(x(3));           
-           0, 0,                                          0,        -actuate(1)*sin(actuate(2))/B;
-           0, 0,                                          0,                                    0];
+% TODO v = [gamma];
+% X = [x,y,r,W]
+% q(t,x) = X_dot    (Note that, actuate u is constant during time period, noise v set to zero)
+q = @(t,x) [ x(4)*actuate(1)*cos(actuate(2))*cos(x(3)); % x_dot = s_v*cos(u_r*cos(r) = W*u_v*cos(u_r)*cos(r)
+             x(4)*actuate(1)*cos(actuate(2))*sin(x(3)); % y_dot = s_t*sin(r) = W*u_v*cos(u_r)*cos(r)
+                    -x(4)*actuate(1)*sin(actuate(2))/B; % r_dot = s_r = -s_v*sin(u_r)/B = -W*u_v*sin(u_r)/B
+                                                     0];% W_dot = 0
+                                
+% A = partial_der(q,X)
+A = @(x) [ 0, 0, -x(4)*actuate(1)*cos(actuate(2))*sin(x(3)), actuate(1)*cos(actuate(2))*cos(x(3));  % partial_der(x,X)
+           0, 0,  x(4)*actuate(1)*cos(actuate(2))*cos(x(3)), actuate(1)*cos(actuate(2))*sin(x(3));  % partial_der(y,X)
+           0, 0,                                          0,        -actuate(1)*sin(actuate(2))/B;  % partial_der(r,X)
+           0, 0,                                          0,                                    0]; % partial_der(W,X)
 
 % TODO it is right that gamma is a noise??
+% TODO: Probably not, it should be considered as a constant bias
+% L = partial_der(q,v)
 % L = @(x) [actuate(1)*cos(actuate(2))*cos(x(3)); 
 %           actuate(1)*cos(actuate(2))*sin(x(3)); 
 %                  -actuate(1)*sin(actuate(2))/B; 
 %                                              0];
-                                         
-% Q = (knownConst.WheelRadiusError^2)/3;
-
 L = 0;
+% Q = variance gamma                                         
+% Q = (knownConst.WheelRadiusError^2)/3;
 Q = 0;
 
 %TODO This is my idea to resolve between (k-1)T and tm=kT????
@@ -134,7 +147,7 @@ xm = estState.Est;
 xp = Yx(end,:)';
 
 Pm = estState.Var;
-[~,Yp] = ode45(@(t,X)mRiccati(t, X, A(Yx((((t - estState.Time)/(tm - estState.Time))*(size(Yx,1)-1) + 1),:)'), L, Q), tspan, Pm(:));
+[~,Yp] = ode45(@(t,X)mRiccati(t, X, A(xp), L, Q), tspan, Pm(:));
 Pp = Yp(end,:)';
 Pp = reshape(Pp, size(A(xp)));
 
@@ -158,6 +171,7 @@ if(not(sense(1) == Inf))
         M = 1;
         R = knownConst.CompassNoise;
         K = Pp*H(xp).'/(H(xp)*Pp*H(xp).' + M*R*M.');
+        
         xm = xp + K*(sense(1) - h(xp));
         Pm = (1 - K*H(xp))*Pp;  
     end
@@ -168,6 +182,7 @@ else
         M = 1;
         R = (knownConst.DistNoise^2)/6;
         K = Pp*H(xp).'/(H(xp)*Pp*H(xp).' + M*R*M.');
+        
         xm = xp + K*(sense(2) - h(xp));
         Pm = (1 - K*H(xp))*Pp;
     else
@@ -194,10 +209,7 @@ estState = struct(field1,value1,field2,value2,field3,value3);
 end
 
 function dP = mRiccati(t, P, A, L, Q)
-    %Convert from "n^2"-by-1 to "n"-by-"n"
-    P = reshape(P, size(A));
-    %Determine derivative
-    dP = A*P + P*A.' + L*Q*L.'; 
-    %Convert from "n"-by-"n" to "n^2"-by-1
-    dP = dP(:); 
+    P = reshape(P, size(A)); %Convert from "n^2"-by-1 to "n"-by-"n"
+    dP = A*P + P*A.' + L*Q*L.'; %Determine derivative
+    dP = dP(:); %Convert from "n"-by-"n" to "n^2"-by-1
 end

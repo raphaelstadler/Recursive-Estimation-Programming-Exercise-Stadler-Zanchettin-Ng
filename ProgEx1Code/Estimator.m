@@ -68,24 +68,31 @@ function [posEst,oriEst,radiusEst, posVar,oriVar,radiusVar,estState] = Estimator
 
 %% Mode 1: Initialization
 if (tm == 0)
-    % Do the initialization of your estimator here!
-    %uniform distribution between [-b1,b1]
-    %posEst = [unifrnd(-b1,b1) , unifrnd(-b1,b1)];
-    b1 = knownConst.TranslationStartBound;
-    posEst = [0,0];
-    posVar = [(b1^2)/3 , (b1^2)/3];
-    %triangolar distribution between [-b2,b2]
-    %oriEst = unifrnd(0,b2) + unifrnd(0,b2) - b2;
-    b2 = knownConst.RotationStartBound;
-    oriEst = 0;
-    oriVar = (b2^2)/6;
-    %radius W0 plups uniform distribution between [-b3,b3]
-    %radiusEst = knownConst.NominalWheelRadius + unifrnd(-b3,b3);
-    b3 = knownConst.WheelRadiusError;
-    radiusEst = knownConst.NominalWheelRadius;
-    radiusVar = (b3^2)/3;
+    % posEst / posVar
+    % =====================
+    % Initial position estimation posEst = [x(0), y(0)] = [x0, y0]
+    % (x0, y0) uniformly distributed between [-p_bar,p_bar]
+    p_bar = knownConst.TranslationStartBound;
+    x0 = 0;     %   E[ unifrnd(-p_bar,p_bar) ]
+    y0 = 0;     %   E[ unifrnd(-p_bar,p_bar) ]
+    posEst = [x0, y0];
     
-    %%TODO ??
+    posVar = [(p_bar^2)/3, (p_bar^2)/3];    % Var(unif(-p_bar,p_bar)) can be calculated like that
+    
+    % oriEst
+    % =====================
+    r_bar = knownConst.RotationStartBound;
+    oriEst = 0; %   E[ unifrnd(-r_bar, r_bar) ]
+    
+    oriVar = (r_bar^2)/3;
+    
+    % radiusEst / radiusVar
+    % =====================
+    gamma = knownConst.WheelRadiusError;
+    radiusEst = knownConst.NominalWheelRadius;  % E[ W0 + unifrnd(-gamma,gamma) ]
+    
+    radiusVar = (gamma^2)/3;
+    
     field1 = 'Est';
     value1 = {[posEst';oriEst;radiusEst]};
     field2 = 'Var';
@@ -106,18 +113,23 @@ end
 
 B = knownConst.WheelBase;
 
-% x = [x,y,r,W]
 % TODO v = [gamma];
-q = @(t,x) [ x(4)*actuate(1)*cos(actuate(2))*cos(x(3));
-             x(4)*actuate(1)*cos(actuate(2))*sin(x(3));
-                    -x(4)*actuate(1)*sin(actuate(2))/B;
-                                                     0];
-                                                 
-A = @(x) [ 0, 0, -x(4)*actuate(1)*cos(actuate(2))*sin(x(3)), actuate(1)*cos(actuate(2))*cos(x(3));
-             0, 0,  x(4)*actuate(1)*cos(actuate(2))*cos(x(3)), actuate(1)*cos(actuate(2))*sin(x(3));           
-             0, 0,                                          0,        -actuate(1)*sin(actuate(2))/B;
-             0, 0,                                          0,                                    0];
+% X = [x,y,r,W]
+% q(t,x) = X_dot    (Note that, actuate u is constant during time period, noise v set to zero)
+q = @(t,x) [ x(4)*actuate(1)*cos(actuate(2))*cos(x(3)); % x_dot = s_v*cos(u_r*cos(r) = W*u_v*cos(u_r)*cos(r)
+             x(4)*actuate(1)*cos(actuate(2))*sin(x(3)); % y_dot = s_t*sin(r) = W*u_v*cos(u_r)*cos(r)
+                    -x(4)*actuate(1)*sin(actuate(2))/B; % r_dot = s_r = -s_v*sin(u_r)/B = -W*u_v*sin(u_r)/B
+                                                     0];% W_dot = 0
+                                
+% A = partial_der(q,X)
+A = @(x) [ 0, 0, -x(4)*actuate(1)*cos(actuate(2))*sin(x(3)), actuate(1)*cos(actuate(2))*cos(x(3));  % partial_der(x,X)
+           0, 0,  x(4)*actuate(1)*cos(actuate(2))*cos(x(3)), actuate(1)*cos(actuate(2))*sin(x(3));  % partial_der(y,X)
+           0, 0,                                          0,        -actuate(1)*sin(actuate(2))/B;  % partial_der(r,X)
+           0, 0,                                          0,                                    0]; % partial_der(W,X)
+
 % TODO it is right that gamma is a noise??
+% TODO: Probably not, it should be considered as a constant bias
+% L = partial_der(q,v)
 L = @(x) [actuate(1)*cos(actuate(2))*cos(x(3)); 
             actuate(1)*cos(actuate(2))*sin(x(3)); 
                    -actuate(1)*sin(actuate(2))/B; 

@@ -110,7 +110,6 @@ end
 %% Mode 2: Estimator iteration.
 % If we get this far tm is not equal to zero, and we are no longer
 % initializing.  Run the estimator.
-
 B = knownConst.WheelBase;
 
 % TODO v = [gamma];
@@ -135,9 +134,9 @@ if designPart==1
     %Q = zeros(4);
     L = @(x) eye(4);
     Q = zeros(4,4);
-    Q(1,1) = .1;
-    Q(2,2) = .1;
-    Q(3,3) = .01;
+    Q(1,1) = .3;
+    Q(2,2) = .3;
+    Q(3,3) = .03;
     
 elseif designPart==2
     % A model of the process noise is available. This model takes
@@ -173,7 +172,7 @@ xp = Yx(end,:)';
 Pm = estState.Var;
 % Solve Riccati Matrix Equation:
 % P_dot = A*P + P*A' + L*Q*L'
-[~,Yp] = ode45(@(t,X)mRiccati(t, X, A, L, Q,Yx,tspan), tspan, Pm(:));
+[~,Yp] = ode45(@(t,X)mRiccati(t, X, A(xp), L(xp), Q,Yx,tspan), tspan, Pm(:));
 Pp = Yp(end,:)';
 Pp = reshape(Pp, size(A(xp)));
 
@@ -181,9 +180,9 @@ h = @(x) [ sqrt(x(1)^2+x(2)^2);
                          x(3)];
 
 %% Step 2 (S2): A posteriori update/Measurement update step
-if(not(sense(1) == Inf))
+if(not(sense(1) == inf))
     % Measurement for sensor 1 is available
-    if(not(sense(2) == Inf))
+    if(not(sense(2) == inf))
         % Measurement for sensor 2 is available
         % Both sensors provide useable measurements.
         % h_k = h(x(kT),w=0) = z(kT)
@@ -200,7 +199,7 @@ if(not(sense(1) == Inf))
     end
 else
     % Measurement for sensor 1 is not available
-    if(not(sense == Inf))
+    if(not(sense(2) == inf))
         % Measurement for sensor 2 is available
         % Only sensor 2 provides useable measurement
         % H_k = partial_der(h_k, x)
@@ -229,12 +228,11 @@ R = [ sigma_d_sq,          0;
                0, sigma_r_sq];
            
 % K: Kalman Gain matrix
-K = Pp*H(xp).'/(H(xp)*Pp*H(xp).' + M*R*M.');
+K = Pp*H(xp)'/(H(xp)*Pp*H(xp)' + M*R*M'); % TODO inv and transp
 
 % Measurement update
 xm = xp + K*(sense' - h(xp));
 Pm = (eye(4) - K*H(xp))*Pp;
-        
 posEst = [xm(1) xm(2)];
 posVar = [Pm(1,1),Pm(2,2)];
 oriEst = xm(3);
@@ -253,10 +251,10 @@ estState = struct(field1,value1,field2,value2,field3,value3);
 end
 
 function dP = mRiccati(t, P, A, L, Q, Y, tspan)
-    detat = (tspan(2)-tspan(1))/(size(Y,1)-1); 
-    xx = interp1(tspan(1):detat:tspan(2),Y,t);
-    A = A(xx');
-    L = L(xx');
+%     detat = (tspan(2)-tspan(1))/(size(Y,1)-1); 
+%     xx = interp1(tspan(1):detat:tspan(2),Y,t);
+%     A = A(xx');
+%     L = L(xx');
     P = reshape(P, size(A)); %Convert from "n^2"-by-1 to "n"-by-"n"
     dP = A*P + P*A.' + L*Q*L.'; %Determine derivative
     dP = dP(:); %Convert from "n"-by-"n" to "n^2"-by-1

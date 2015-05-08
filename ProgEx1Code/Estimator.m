@@ -135,57 +135,109 @@ A = @(x) [ 0, 0, -x(4)*actuate(1)*cos(actuate(2))*sin(x(3)), actuate(1)*cos(actu
 %                  -actuate(1)*sin(actuate(2))/B; 
 %                                              0];
 L = 0;
+
 % Q = variance gamma                                         
 % Q = (knownConst.WheelRadiusError^2)/3;
+% Q = E[ v(t) ]
 Q = 0;
 
 %TODO This is my idea to resolve between (k-1)T and tm=kT????
 tspan = [estState.Time,tm];
 
+%% Step 1 (S1): Prior update/Prediction step
+%
 xm = estState.Est;
-[~,Yx] = ode45(q,tspan,xm);
+[~,Yx] = ode45(q,tspan,xm); % Solve x_dot = q(t,x) for t in tspan
 xp = Yx(end,:)';
 
 Pm = estState.Var;
+% Solve Riccati Matrix Equation:
+% P_dot = A*P + P*A' + L*Q*L'
 [~,Yp] = ode45(@(t,X)mRiccati(t, X, A(xp), L, Q), tspan, Pm(:));
 Pp = Yp(end,:)';
 Pp = reshape(Pp, size(A(xp)));
 
 
+%% Step 2 (S2): A posteriori update/Measurement update step
+%
 if(not(sense(1) == Inf))
+% Measurement for sensor 1 is available
     if(not(sense(2) == Inf))
+    % Measurement for sensor 2 available:
+    % Both sensors provide useable measurements.
+        % h_k = h(x(kT),w(kT)) = z(kT)
         h = @(x) [ x(3);
            sqrt(x(1)^2+x(2)^2)];
-        H = @(x) [                          0,                          0, 1, 0;
-           x(1)/(sqrt(x(1)^2+x(2)^2)), x(2)/(sqrt(x(1)^2+x(2)^2)), 0, 0];
+       
+        % H_k = partial_der(h_k, x)
+        H = @(x) [  0,                          0,                          1, 0;
+                    x(1)/(sqrt(x(1)^2+x(2)^2)), x(2)/(sqrt(x(1)^2+x(2)^2)), 0, 0];
+        
+        % M_k = partial_der(h_k, w)
         M = eye(2);
-        R = [ knownConst.CompassNoise,                          0; 
-                            0, (knownConst.DistNoise^2)/6];
+        
+        % R is the co-variance matrix of the noise w
+        sigma_r_sq = knownConst.CompassNoise;
+        sigma_d_sq = (knownConst.DistNoise^2)/6;    % Calculated from triangular pdf of CRV d
+        R = [   sigma_r_sq, 0;
+                0,          sigma_d_sq];
+        
+        % K: Kalman Gain matrix
         K = Pp*H(xp).'/(H(xp)*Pp*H(xp).' + M*R*M.');
 
+        % Measurement update
         xm = xp + K*(sense' - h(xp));
         Pm = (eye(4) - K*H(xp))*Pp;
     else
+    % NO measurement for sensor 2:
+    % Only sensor 1 provides useable measurement
+        % h_k = h(x(kT),w(kT)) = z(kT)
         h = @(x) x(3);
+        
+        % H_k = partial_der(h_k, x)
         H = @(x) [0, 0, 1, 0];
+        
+        % M_k = partial_der(h_k, w)
         M = 1;
+        
+        % R is the co-variance matrix of the noise w
         R = knownConst.CompassNoise;
+        
+        % K: Kalman Gain matrix
         K = Pp*H(xp).'/(H(xp)*Pp*H(xp).' + M*R*M.');
         
+        % Measurement update
         xm = xp + K*(sense(1) - h(xp));
         Pm = (1 - K*H(xp))*Pp;  
     end
 else
-    if(not(sense == Inf))
+% NO measurement for sensor 1
+    if(not(sense(2) == Inf))
+    % Measurement for sensor 2 available:
+    % Only sensor 2 provides useable measurement
+        % h_k = h(x(kT),w(kT)) = z(kT)
         h = @(x) sqrt(x(1)^2+x(2)^2);
-        H = @(x) [x(1)/(sqrt(x(1)^2+x(2)^2)), x(2)/(sqrt(x(1)^2+x(2)^2)), 0, 0];
-        M = 1;
-        R = (knownConst.DistNoise^2)/6;
-        K = Pp*H(xp).'/(H(xp)*Pp*H(xp).' + M*R*M.');
         
+        % H_k = partial_der(h_k, x)
+        H = @(x) [x(1)/(sqrt(x(1)^2+x(2)^2)), x(2)/(sqrt(x(1)^2+x(2)^2)), 0, 0];
+        
+        % M_k = partial_der(h_k, w)
+        M = 1;
+        
+        % R is the co-variance matrix of the noise w
+        R = (knownConst.DistNoise^2)/6;
+        
+        % K: Kalman Gain matrix
+        K = Pp*H(xp).'/(H(xp)*Pp*H(xp).' + M*R*M.');
+       
+        % Measurement update        
         xm = xp + K*(sense(2) - h(xp));
         Pm = (1 - K*H(xp))*Pp;
     else
+    % NO measurement for sensor 2 available:
+    % Both sensors 1 and 2 do not provide useable measurements
+        % Measurement update
+        % No new information available!
         xm = xp;
         Pm = Pp;
     end 

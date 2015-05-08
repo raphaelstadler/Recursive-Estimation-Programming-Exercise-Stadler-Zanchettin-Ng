@@ -134,63 +134,59 @@ A = @(x) [ 0, 0, -x(4)*actuate(1)*cos(actuate(2))*sin(x(3)), actuate(1)*cos(actu
 %           actuate(1)*cos(actuate(2))*sin(x(3)); 
 %                  -actuate(1)*sin(actuate(2))/B; 
 %                                              0];
-L = 0;
+L = eye(4);
 % Q = variance gamma                                         
 % Q = (knownConst.WheelRadiusError^2)/3;
-Q = 0;
+Q = zeros(4,4);
+Q(1,1) = .01;
+Q(2,2) = .01;
+Q(3,3) = .01;
 
 %TODO This is my idea to resolve between (k-1)T and tm=kT????
 tspan = [estState.Time,tm];
 
 xm = estState.Est;
-[~,Yx] = ode45(q,tspan,xm);
+[~,Yx] = ode45(q,tspan,xm');
 xp = Yx(end,:)';
 
 Pm = estState.Var;
-[~,Yp] = ode45(@(t,X)mRiccati(t, X, A(xp), L, Q), tspan, Pm(:));
+[~,Yp] = ode45(@(t,X)mRiccati(t, X, A, L, Q,Yx,tspan), tspan, Pm(:));
 Pp = Yp(end,:)';
 Pp = reshape(Pp, size(A(xp)));
 
-
+h = @(x) [ sqrt(x(1)^2+x(2)^2);
+                          x(3)];
 if(not(sense(1) == Inf))
     if(not(sense(2) == Inf))
-        h = @(x) [ x(3);
-           sqrt(x(1)^2+x(2)^2)];
-        H = @(x) [                          0,                          0, 1, 0;
-           x(1)/(sqrt(x(1)^2+x(2)^2)), x(2)/(sqrt(x(1)^2+x(2)^2)), 0, 0];
-        M = eye(2);
-        R = [ knownConst.CompassNoise,                          0; 
-                            0, (knownConst.DistNoise^2)/6];
-        K = Pp*H(xp).'/(H(xp)*Pp*H(xp).' + M*R*M.');
-
-        xm = xp + K*(sense' - h(xp));
-        Pm = (eye(4) - K*H(xp))*Pp;
+        H = @(x) [ x(1)/(sqrt(x(1)^2+x(2)^2)), x(2)/(sqrt(x(1)^2+x(2)^2)), 0, 0
+                                            0,                          0, 1, 0];
     else
-        h = @(x) x(3);
-        H = @(x) [0, 0, 1, 0];
-        M = 1;
-        R = knownConst.CompassNoise;
-        K = Pp*H(xp).'/(H(xp)*Pp*H(xp).' + M*R*M.');
-        
-        xm = xp + K*(sense(1) - h(xp));
-        Pm = (1 - K*H(xp))*Pp;  
+        H = @(x) [x(1)/(sqrt(x(1)^2+x(2)^2)), x(2)/(sqrt(x(1)^2+x(2)^2)), 0, 0;
+                                           0,                          0, 0, 0];
+        hh = h(xp);      
+        sense(2) = hh(2); 
     end
 else
     if(not(sense == Inf))
-        h = @(x) sqrt(x(1)^2+x(2)^2);
-        H = @(x) [x(1)/(sqrt(x(1)^2+x(2)^2)), x(2)/(sqrt(x(1)^2+x(2)^2)), 0, 0];
-        M = 1;
-        R = (knownConst.DistNoise^2)/6;
-        K = Pp*H(xp).'/(H(xp)*Pp*H(xp).' + M*R*M.');
-        
-        xm = xp + K*(sense(2) - h(xp));
-        Pm = (1 - K*H(xp))*Pp;
+        H = @(x) [0, 0, 0, 0;
+                  0, 0, 1, 0];
+        hh = h(xp);      
+        sense(1) = hh(1);      
     else
-        xm = xp;
-        Pm = Pp;
+        H = @(x) [0, 0, 0, 0;
+                  0, 0, 0, 0];
+        sense = h(xp)';
     end 
 end
 
+M = eye(2);
+R = [ (knownConst.DistNoise^2)/6,                       0;
+                               0, knownConst.CompassNoise];
+K = Pp*H(xp).'/(H(xp)*Pp*H(xp).' + M*R*M.');
+
+xm = xp + K*(sense' - h(xp));
+Pm = (eye(4) - K*H(xp))*Pp;
+        
 posEst = [xm(1) xm(2)];
 posVar = [Pm(1,1),Pm(2,2)];
 oriEst = xm(3);
@@ -208,7 +204,10 @@ value3 = {tm};
 estState = struct(field1,value1,field2,value2,field3,value3);
 end
 
-function dP = mRiccati(t, P, A, L, Q)
+function dP = mRiccati(t, P, A, L, Q, Y, tspan)
+    detat = (tspan(2)-tspan(1))/(size(Y,1)-1); 
+    xx = interp1(tspan(1):detat:tspan(2),Y,t);
+    A = A(xx');
     P = reshape(P, size(A)); %Convert from "n^2"-by-1 to "n"-by-"n"
     dP = A*P + P*A.' + L*Q*L.'; %Determine derivative
     dP = dP(:); %Convert from "n"-by-"n" to "n^2"-by-1

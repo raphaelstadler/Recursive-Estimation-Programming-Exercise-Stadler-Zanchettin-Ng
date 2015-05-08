@@ -183,7 +183,7 @@ if(not(sense(1) == Inf))
     if(not(sense(2) == Inf))
     % Measurement for sensor 2 available:
     % Both sensors provide useable measurements.
-        % h_k = h(x(kT),w(kT)) = z(kT)
+        % h_k = h(x(kT),w=0) = z(kT)
         h = @(x) [  x(3);
                     sqrt(x(1)^2+x(2)^2)];
        
@@ -201,7 +201,7 @@ if(not(sense(1) == Inf))
                 0,          sigma_d_sq];
         
         % K: Kalman Gain matrix
-        K = Pp*H(xp).'/(H(xp)*Pp*H(xp).' + M*R*M.');
+        K = Pp*H(xp).'/(H(xp)*Pp*H(xp).' + M*R*M.'); % TODO: Shouldn't this be handled with a propper matrix inverse?
 
         % Measurement update
         xm = xp + K*(sense' - h(xp));
@@ -219,10 +219,11 @@ if(not(sense(1) == Inf))
         M = 1;
         
         % R is the co-variance matrix of the noise w
-        R = knownConst.CompassNoise;
+        sigma_r_sq = knownConst.CompassNoise;
+        R = sigma_r_sq;
         
         % K: Kalman Gain matrix
-        K = Pp*H(xp).'/(H(xp)*Pp*H(xp).' + M*R*M.');
+        K = Pp*H(xp).'/(H(xp)*Pp*H(xp).' + M*R*M.'); % TODO: Shouldn't this be handled with a propper matrix inverse?
         
         % Measurement update
         xm = xp + K*(sense(1) - h(xp));
@@ -243,10 +244,11 @@ else
         M = 1;
         
         % R is the co-variance matrix of the noise w
-        R = (knownConst.DistNoise^2)/6;
+        sigma_d_sq = (knownConst.DistNoise^2)/6;    % Calculated from triangular pdf of CRV d
+        R = sigma_d_sq;
         
         % K: Kalman Gain matrix
-        K = Pp*H(xp).'/(H(xp)*Pp*H(xp).' + M*R*M.');
+        K = Pp*H(xp).'/(H(xp)*Pp*H(xp).' + M*R*M.'); % TODO: Shouldn't this be handled with a propper matrix inverse?
        
         % Measurement update        
         xm = xp + K*(sense(2) - h(xp));

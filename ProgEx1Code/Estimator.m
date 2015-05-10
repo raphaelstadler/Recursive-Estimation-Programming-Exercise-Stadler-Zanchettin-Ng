@@ -93,17 +93,18 @@ if (tm == 0)
     
     radiusVar = (gamma^2)/3;
     
-    field1 = 'Est';
+    field1 = 'X';
     value1 = {[posEst';oriEst;radiusEst]};
-    field2 = 'Var';
+    field2 = 'P';
     value2 = {[posVar(1),         0,      0,         0;
                        0, posVar(2),      0,         0;
                        0,         0, oriVar,         0;
                        0,         0,      0, radiusVar] };
-    field3 = 'Time';
+    field3 = 'T';
     value3 = {tm};
+    % TODO dummy?? :)
     value4 = [0.1;0.1;0.01;0];
-    field4 = 'noiseVar';
+    field4 = 'Errs';
     estState = struct(field1,value1,field2,value2,field3,value3,field4,value4);
     return;
 end
@@ -114,28 +115,34 @@ end
 % initializing.  Run the estimator.
 B = knownConst.WheelBase;
 
-% TODO v = [gamma];
+%% DYNAMIC OF THE SYSTEM;
 % X = [x,y,r,W]
 % q(t,x) = X_dot    (Note that, actuate u is constant during time period, noise v set to zero)
 q = @(t,x) [ x(4)*actuate(1)*cos(actuate(2))*cos(x(3)); % x_dot = s_v*cos(u_r)*cos(r) = W*u_v*cos(u_r)*cos(r)
              x(4)*actuate(1)*cos(actuate(2))*sin(x(3)); % y_dot = s_t*sin(r) = W*u_v*cos(u_r)*sin(r)
                     -x(4)*actuate(1)*sin(actuate(2))/B; % r_dot = s_r = -s_v*sin(u_r)/B = -W*u_v*sin(u_r)/B
                                                      0];% W_dot = 0
-                                
-% A = partial_der(q,X)
+                     
+%% A = partial_der(q,X)
 A = @(x) [ 0, 0, -x(4)*actuate(1)*cos(actuate(2))*sin(x(3)), actuate(1)*cos(actuate(2))*cos(x(3));  % partial_der(x,X)
            0, 0,  x(4)*actuate(1)*cos(actuate(2))*cos(x(3)), actuate(1)*cos(actuate(2))*sin(x(3));  % partial_der(y,X)
            0, 0,                                          0,        -actuate(1)*sin(actuate(2))/B;  % partial_der(r,X)
            0, 0,                                          0,                                    0]; % partial_der(W,X)
 
+%% SYSTEM NOISE
 if designPart==1
     % The motion of the robot is corrupted by process noise, the properties
     % of which are unknown.
     % .: Do not take any process noise into account in the model
-    %L = @(x) zeros(4);
-    %Q = zeros(4);
     L = @(x) eye(4);
-    Q = diag(estState.noiseVar);
+    noiseErrs = estState.Errs;
+    if(size(noiseErrs,2)>1)
+        meanErrs = mean(noiseErrs,2);
+        err  = (noiseErrs - repmat(meanErrs,1,size(noiseErrs,2)))/(size(noiseErrs,2)-1);
+        Q = diag(diag(err*err'));
+    else
+        Q = diag(noiseErrs);
+    end
     
 elseif designPart==2
     % A model of the process noise is available. This model takes
@@ -153,38 +160,39 @@ elseif designPart==2
     Q_v = knownConst.VelocityInputPSD;
     Q_r = knownConst.AngleInputPSD;
     Q = [Q_v,   0;
-           0,     Q_r];
+           0, Q_r];
 else
-    error('Invalid designPart chosen. Choose designPart==1 or designPart==2.');
+%     error('Invalid designPart chosen. Choose designPart==1 or designPart==2.');
 end
 
-
-%TODO This is my idea to resolve between (k-1)T and tm=kT????
-tspan = [estState.Time,tm];
+%% Resolve the SYSTEM DYNAMIC between [(k-1)T,kT]
+tspan = [estState.T,tm];
 
 %% Step 1 (S1): Prior update/Prediction step
-%
-xm = estState.Est;
-[~,Yx] = ode45(q,tspan,xm'); % Solve x_dot = q(t,x) for t in tspan
+% Solve the equations of motion
+x0 = estState.X;
+[~,Yx] = ode45(q,tspan,x0'); % Solve x_dot = q(t,x) for t in tspan
 xp = Yx(end,:)';
 
-Pm = estState.Var;
+P0 = estState.P;
 % Solve Riccati Matrix Equation:
 % P_dot = A*P + P*A' + L*Q*L'
-[~,Yp] = ode45(@(t,X)mRiccati(t, X, A, L, Q,Yx,tspan), tspan, Pm(:));
+[~,Yp] = ode45(@(t,X)mRiccati(t, X, A(xp), L(xp), Q), tspan, P0(:));
 Pp = Yp(end,:)';
 Pp = reshape(Pp, size(A(xp)));
 
+%% DYNAMIC OF THE MEASUREMENT;
+% h_k = h(x(kT),w=0) = z(kT)
 h = @(x) [ sqrt(x(1)^2+x(2)^2);
                          x(3)];
-
+                     
 %% Step 2 (S2): A posteriori update/Measurement update step
 if(not(sense(1) == inf))
     % Measurement for sensor 1 is available
     if(not(sense(2) == inf))
         % Measurement for sensor 2 is available
         % Both sensors provide useable measurements.
-        % h_k = h(x(kT),w=0) = z(kT)
+        % H_k = partial_der(h_k, x)
         H = @(x) [ x(1)/(sqrt(x(1)^2+x(2)^2)), x(2)/(sqrt(x(1)^2+x(2)^2)), 0, 0
                                             0,                          0, 1, 0];
     else
@@ -226,12 +234,13 @@ sigma_r_sq = knownConst.CompassNoise;
 R = [ sigma_d_sq,          0;
                0, sigma_r_sq];
            
-% K: Kalman Gain matrix
-K = Pp*H(xp)'/(H(xp)*Pp*H(xp)' + M*R*M'); % TODO inv and transp
+%% K: Kalman Gain matrix
+K = Pp*H(xp)'/(H(xp)*Pp*H(xp)' + M*R*M');
 
-% Measurement update
+%% Measurement update
 xm = xp + K*(sense' - h(xp));
 Pm = (eye(4) - K*H(xp))*Pp;
+
 posEst = [xm(1) xm(2)];
 posVar = [Pm(1,1),Pm(2,2)];
 oriEst = xm(3);
@@ -239,28 +248,36 @@ oriVar = Pm(3,3);
 radiusEst = xm(4);
 radiusVar = Pm(4,4);
 
-%%TODO ??
-field1 = 'Est';
+%% SAVE new state
+field1 = 'X';
 value1 = {xm};
-field2 = 'Var';
+field2 = 'P';
 value2 = {Pm};
-field3 = 'Time';
+field3 = 'T';
 value3 = {tm};
-value4 = estState.noiseVar;
-% if(diag((xm-xp)*(xm-xp)') == zeros(4,1))
-%     value4 = estState.noiseVar;
-% else
-%     value4 = diag((xm-xp)*(xm-xp)');
-% end
-field4 = 'noiseVar';
+if designPart==1
+    if(diag((xm-xp)*(xm-xp)') == zeros(4,1))
+        value4 = estState.Errs;
+    else
+        value4 = [estState.Errs, xm-xp];
+        value4(4,end) = 0;
+    end
+end
+if designPart==2 
+   value4 = 0;
+end
+field4 = 'Errs';
+
 estState = struct(field1,value1,field2,value2,field3,value3,field4,value4);
 end
 
-function dP = mRiccati(t, P, A, L, Q, Y, tspan)
-    detat = (tspan(2)-tspan(1))/(size(Y,1)-1); 
-    xx = interp1(tspan(1):detat:tspan(2),Y,t);
-    A = A(xx');
-    L = L(xx');
+function dP = mRiccati(t, P, A, L, Q)
+    % TODO why it is not right? 
+%     detat = (tspan(2)-tspan(1))/(size(Y,1)-1); 
+%     xx = interp1(tspan(1):detat:tspan(2),Y,t);
+%     A = A(xx');
+%     L = L(xx');
+
     P = reshape(P, size(A)); %Convert from "n^2"-by-1 to "n"-by-"n"
     dP = A*P + P*A.' + L*Q*L.'; %Determine derivative
     dP = dP(:); %Convert from "n"-by-"n" to "n^2"-by-1

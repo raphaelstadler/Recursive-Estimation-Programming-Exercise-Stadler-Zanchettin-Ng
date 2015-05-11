@@ -1,4 +1,4 @@
-function run(designPart)
+function [trackErrorNorm] = run(designPart)
 % run(designPart)
 %
 % Main function for Extended Kalman Filter programming exercise.
@@ -30,7 +30,7 @@ function run(designPart)
 % [24.04.15, MM]    2015 version
 
 % clear command window, close figures
-clc;
+%clc;
 close all;
 
 
@@ -41,7 +41,7 @@ if nargin<1 || ((designPart~=1) && (designPart~=2))
     error('Wrong input argument.  You have to call run(1) or run(2) corresponding to the estimator design part considered.');
     return;
 else
-    disp(['Executing ''run'' for estimator design part #',num2str(designPart),'.']);
+    %disp(['Executing ''run'' for estimator design part #',num2str(designPart),'.']);
 end;
 
 
@@ -59,8 +59,8 @@ unknownConst = UnknownConstants();
 % Set the random number generator state.
 % Uncomment to make results reproducable. This setting was used to generate
 % the plot in the problem description.
- rand('seed',1);
- randn('seed',1);
+%rand('seed',1);
+%randn('seed',1);
 
 
 %% Simulation
@@ -88,9 +88,9 @@ radiusVar = zeros(N,1);
 for n = 2:N
     [posEst(n,:),oriEst(n),radiusEst(n),posVar(n,:),oriVar(n),radiusVar(n),estState] = ...
         Estimator(estState,input(n,:),sense(n,:),tm(n),knownConst,designPart);
-    clc;
-    disp(['Executing ''run'' for estimator design part #',num2str(designPart),'.']);
-    disp([num2str(n/N*100),'% completed']);
+    %clc;
+    %disp(['Executing ''run'' for estimator design part #',num2str(designPart),'.']);
+    %disp([num2str(n/N*100),'% completed']);
 end
 
 
@@ -122,7 +122,7 @@ xlabel('x position');
 ylabel('y position');
 title(['position tracking error: ',num2str(trackErrorNorm,6),' m']);
 
-
+disp(num2str(trackErrorNorm,6));
 %%%%%
 % estimation error (incl. standard deviation)
 %%%%%

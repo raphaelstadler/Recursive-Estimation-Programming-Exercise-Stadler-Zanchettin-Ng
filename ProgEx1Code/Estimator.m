@@ -17,8 +17,8 @@ function [posEst,oriEst,radiusEst, posVar,oriVar,radiusVar,estState] = Estimator
 %   estState        previous estimator state (time step k-1)
 %                   May be defined by the user (for example as a struct).
 %   actuate         control input u(k-1), [1x2]-vector
-%                   actuate(1): u_v(k-1), drive wheel angular velocity
-%                   actuate(2): u_r(k-1), drive wheel angle
+%                   uv: u_v(k-1), drive wheel angular velocity
+%                   ur: u_r(k-1), drive wheel angle
 %   sense           sensor measurements z(k), [1x2]-vector, INF if no
 %                   measurement
 %                   sense(1): z_d(k), distance measurement
@@ -102,10 +102,7 @@ if (tm == 0)
                        0,         0,      0, radiusVar] };
     field3 = 'T';
     value3 = {tm};
-    % TODO dummy?? :)
-    value4 = [0.1;0.1;0.01;0];
-    field4 = 'Errs';
-    estState = struct(field1,value1,field2,value2,field3,value3,field4,value4);
+    estState = struct(field1,value1,field2,value2,field3,value3);
     return;
 end
 
@@ -114,46 +111,43 @@ end
 % If we get this far tm is not equal to zero, and we are no longer
 % initializing.  Run the estimator.
 B = knownConst.WheelBase;
+uv = actuate(1);
+ur = actuate(2);
 
 %% DYNAMIC OF THE SYSTEM;
 % X = [x,y,r,W]
 % q(t,x) = X_dot    (Note that, actuate u is constant during time period, noise v set to zero)
-q = @(t,x) [ x(4)*actuate(1)*cos(actuate(2))*cos(x(3)); % x_dot = s_v*cos(u_r)*cos(r) = W*u_v*cos(u_r)*cos(r)
-             x(4)*actuate(1)*cos(actuate(2))*sin(x(3)); % y_dot = s_t*sin(r) = W*u_v*cos(u_r)*sin(r)
-                    -x(4)*actuate(1)*sin(actuate(2))/B; % r_dot = s_r = -s_v*sin(u_r)/B = -W*u_v*sin(u_r)/B
-                                                     0];% W_dot = 0
+q = @(t,x) x(4)*uv*...
+           [ cos(ur)*cos(x(3));  % x_dot = s_v*cos(u_r)*cos(r) = W*u_v*cos(u_r)*cos(r)
+             cos(ur)*sin(x(3));  % y_dot = s_t*sin(r) = W*u_v*cos(u_r)*sin(r)
+                    -sin(ur)/B;  % r_dot = s_r = -s_v*sin(u_r)/B = -W*u_v*sin(u_r)/B
+                             0]; % W_dot = 0
                      
 %% A = partial_der(q,X)
-A = @(x) [ 0, 0, -x(4)*actuate(1)*cos(actuate(2))*sin(x(3)), actuate(1)*cos(actuate(2))*cos(x(3));  % partial_der(x,X)
-           0, 0,  x(4)*actuate(1)*cos(actuate(2))*cos(x(3)), actuate(1)*cos(actuate(2))*sin(x(3));  % partial_der(y,X)
-           0, 0,                                          0,        -actuate(1)*sin(actuate(2))/B;  % partial_der(r,X)
-           0, 0,                                          0,                                    0]; % partial_der(W,X)
-
+A = @(x) uv*...
+         [ 0, 0, -x(4)*cos(ur)*sin(x(3)), cos(ur)*cos(x(3));  % partial_der(x,X)
+           0, 0,  x(4)*cos(ur)*cos(x(3)), cos(ur)*sin(x(3));  % partial_der(y,X)
+           0, 0,                       0,        -sin(ur)/B;  % partial_der(r,X)
+           0, 0,                       0,                         0]; % partial_der(W,X)
+    
 %% SYSTEM NOISE
 if designPart==1
     % The motion of the robot is corrupted by process noise, the properties
     % of which are unknown.
     % .: Do not take any process noise into account in the model
     L = @(x) eye(4);
-    noiseErrs = estState.Errs;
-    if(size(noiseErrs,2)>1)
-        meanErrs = mean(noiseErrs,2);
-        err  = (noiseErrs - repmat(meanErrs,1,size(noiseErrs,2)))/(size(noiseErrs,2)-1);
-        Q = diag(diag(err*err'));
-    else
-        Q = diag(noiseErrs);
-    end
+    %Founded with genetic algorithm to minimize final error
+    Q = diag([0.16;0.14;0.02;0]);
     
 elseif designPart==2
     % A model of the process noise is available. This model takes
     % non-idealities in the actuation mechanism into account
-    
     % L = partial_der(q,v) | v = 0, where v = [v_v, v_r]'
-      L = @(x) x(4)*actuate(1)*...
-          [ cos(actuate(2))*cos(x(3)),  -sin(actuate(2))*cos(x(3)); % partial_der(q(1),v)
-            cos(actuate(2))*sin(x(3)),  -sin(actuate(2))*sin(x(3)); % partial_der(q(2),v)
-            -sin(actuate(2))/B,         -cos(actuate(2))/B;         % partial_der(q(3),v)
-            0,                          0                        ]; % partial_der(q(4),v)
+     L = @(x) x(4)*uv*...
+          [ cos(ur)*cos(x(3)), -sin(ur)*cos(x(3));  % partial_der(q(1),v)
+            cos(ur)*sin(x(3)), -sin(ur)*sin(x(3));  % partial_der(q(2),v)
+                   -sin(ur)/B,         -cos(ur)/B;  % partial_der(q(3),v)
+                            0,                  0]; % partial_der(q(4),v)
     
     % Additionally to the information of the EKF in design part 1 above,
     % this EKF has acces to the constants Q_v and Q_r
@@ -171,13 +165,13 @@ tspan = [estState.T,tm];
 %% Step 1 (S1): Prior update/Prediction step
 % Solve the equations of motion
 x0 = estState.X;
-[~,Yx] = ode45(q,tspan,x0'); % Solve x_dot = q(t,x) for t in tspan
+[Xx,Yx] = ode45(q,tspan,x0'); % Solve x_dot = q(t,x) for t in tspan
 xp = Yx(end,:)';
 
 P0 = estState.P;
 % Solve Riccati Matrix Equation:
 % P_dot = A*P + P*A' + L*Q*L'
-[~,Yp] = ode45(@(t,X)mRiccati(t, X, A(xp), L(xp), Q), tspan, P0(:));
+[~,Yp] = ode45(@(t,X)mRiccati(t, X, A, L, Q,Yx,Xx), tspan, P0(:));
 Pp = Yp(end,:)';
 Pp = reshape(Pp, size(A(xp)));
 
@@ -193,7 +187,7 @@ if(not(sense(1) == inf))
         % Measurement for sensor 2 is available
         % Both sensors provide useable measurements.
         % H_k = partial_der(h_k, x)
-        H = @(x) [ x(1)/(sqrt(x(1)^2+x(2)^2)), x(2)/(sqrt(x(1)^2+x(2)^2)), 0, 0
+        H = @(x) [ x(1)/(sqrt(x(1)^2+x(2)^2)), x(2)/(sqrt(x(1)^2+x(2)^2)), 0, 0;
                                             0,                          0, 1, 0];
     else
         % Measurement for sensor 2 is not available
@@ -234,8 +228,9 @@ sigma_r_sq = knownConst.CompassNoise;
 R = [ sigma_d_sq,          0;
                0, sigma_r_sq];
            
-%% K: Kalman Gain matrix
-K = Pp*H(xp)'/(H(xp)*Pp*H(xp)' + M*R*M');
+%% K: Kalman Gain matrix 
+% (without M becouse it is eye(2))
+K = Pp*H(xp)'/(H(xp)*Pp*H(xp)' + R);
 
 %% Measurement update
 xm = xp + K*(sense' - h(xp));
@@ -255,30 +250,17 @@ field2 = 'P';
 value2 = {Pm};
 field3 = 'T';
 value3 = {tm};
-if designPart==1
-    if(diag((xm-xp)*(xm-xp)') == zeros(4,1))
-        value4 = estState.Errs;
-    else
-        value4 = [estState.Errs, xm-xp];
-        value4(4,end) = 0;
-    end
-end
-if designPart==2 
-   value4 = 0;
-end
-field4 = 'Errs';
+estState = struct(field1,value1,field2,value2,field3,value3);
 
-estState = struct(field1,value1,field2,value2,field3,value3,field4,value4);
 end
 
-function dP = mRiccati(t, P, A, L, Q)
+function dP = mRiccati(t, P, A, L, Q, Y, X)
     % TODO why it is not right? 
-%     detat = (tspan(2)-tspan(1))/(size(Y,1)-1); 
-%     xx = interp1(tspan(1):detat:tspan(2),Y,t);
-%     A = A(xx');
-%     L = L(xx');
+    xx = interp1(X,Y,t);
+    A = A(xx');
+    L = L(xx');
 
     P = reshape(P, size(A)); %Convert from "n^2"-by-1 to "n"-by-"n"
-    dP = A*P + P*A.' + L*Q*L.'; %Determine derivative
+    dP = A*P + P*A' + L*Q*L'; %Determine derivative
     dP = dP(:); %Convert from "n"-by-"n" to "n^2"-by-1
 end

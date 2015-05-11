@@ -1,9 +1,18 @@
+k = 20;
 sumError = 0;
-for ii = 1:100
+for ii = 1:k
     trackErrorNorm = run(2);
     sumError = sumError + trackErrorNorm;
 end
-sumError = sumError/100;
+sumError = sumError/k;
 disp('ERROR:')
 disp(sumError)
-k,
+disp('====== two =======')
+sumError = 0;
+for ii = 1:k
+    trackErrorNorm = run(2);
+    sumError = sumError + trackErrorNorm;
+end
+sumError = sumError/k;
+disp('ERROR:')
+disp(sumError)

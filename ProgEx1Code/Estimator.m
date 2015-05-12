@@ -134,10 +134,12 @@ A = @(x) uv*...
 if designPart==1
     % The motion of the robot is corrupted by process noise, the properties
     % of which are unknown.
-    % .: Do not take any process noise into account in the model
+    % L = partial_der(q,v) | v = 0, where v = [v_1, v_2, v_3, v_4]'
     L = @(x) eye(4);
-    %Founded with genetic algorithm to minimize final error
-    Q = diag([0.12;0.19;0.02;0]);
+    % Founded with genetic algorithm to minimize final error
+    %Q = diag([0.0447;0.0079;0.0014;0]);
+    %Q = diag([0.05;0.01;0.0015;0]);
+    Q = diag([0.15;0.2;0.02;0]);
     
 elseif designPart==2
     % A model of the process noise is available. This model takes

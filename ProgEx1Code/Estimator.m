@@ -137,7 +137,7 @@ if designPart==1
     % .: Do not take any process noise into account in the model
     L = @(x) eye(4);
     %Founded with genetic algorithm to minimize final error
-    Q = diag([0.16;0.14;0.02;0]);
+    Q = diag([0.12;0.19;0.02;0]);
     
 elseif designPart==2
     % A model of the process noise is available. This model takes

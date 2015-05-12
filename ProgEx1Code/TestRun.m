@@ -1,7 +1,7 @@
-k = 20;
+k = 50;
 sumError = 0;
 for ii = 1:k
-    trackErrorNorm = run(2);
+    trackErrorNorm = run(1);
     sumError = sumError + trackErrorNorm;
 end
 sumError = sumError/k;

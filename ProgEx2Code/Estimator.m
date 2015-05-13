@@ -125,14 +125,14 @@ for n = 1:N
 
     % Process Equation
     %
+    hA = newHeading(hA,xA,yA,uA); % new hA needs old xA and old yA, so update hA first.
     xA = xA + dt*(uA*cos(hA));
     yA = yA + dt*(uA*sin(hA));
-    hA = newHeading(hA,xA,yA,uA);
 
+    hB = newHeading(hB,xB,yB,uB); % new hB needs old xB and old yB, so update hB first.
     xB = xB + dt*(uB*cos(hB));
     yB = yB + dt*(uB*sin(hB));
-    hB = newHeading(hB,xB,yB,uB);
-
+    
     % Assign to new variables
     postParticles.x(1,n) = xA;
     postParticles.x(2,n) = xB;
@@ -166,9 +166,6 @@ function newHeading = newHeading(oldHeading, oldX, oldY, oldU)
     if (oldX == 0) % && ...
     end
     
-    % Lower wall:
-    if (oldY == 0) && (oldU*sin(oldHeading) < 0)
-    end
 end
 
 end % end estimator

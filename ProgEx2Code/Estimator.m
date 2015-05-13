@@ -210,23 +210,48 @@ end
 
 function newHeading = newHeading(oldHeading, oldX, oldY, oldU)
     
+    preAlpha = -1;
     newHeading = oldHeading;
     % TODO: Check if orientation changes because of a bouncing and add noise to heading
     
     % Upper wall:
     if (oldY == L) && (oldU*sin(oldHeading) > 0)
+        if oldU*cos(oldHeading) > 0
+            preAlpha = oldHeading;
+        else
+            preAlpha = pi - oldHeading;
+        end
+        postAlpha = preAlpha;
     end
     
     % Right wall:
     if (oldX == L) && (oldU*cos(oldHeading) > 0)
+        if oldU*sin(oldHeading) > 0
+            preAlpha = 0.5*pi - oldHeading;
+        else
+            preAlpha = -(-0.5*pi - oldHeading);
+        end
+        postAlpha = preAlpha;
     end
     
     % Lower wall:
     if (oldY == 0) && (oldU*sin(oldHeading) < 0)
+        if oldU*cos(oldHeading) > 0
+            preAlpha = -oldHeading;
+        else
+            preAlpha = -(-pi - oldHeading);
+        end
+        postAlpha = preAlpha;
     end
     
     % Left wall:
     if (oldX == 0) && (oldU*cos(oldHeading) < 0)
+        if oldU*sin(oldHeading) > 0
+            preAlpha = oldHeading - 0.5*pi;
+        else
+            preAlpha = -(-pi - oldHeading);
+        end
+        postAlpha = preAlpha;
     end
     
 end

@@ -72,6 +72,8 @@ end
 
 % Side-length of square room
 L = KC.L;
+% Constant time interval in which the estimator is called:
+dt = KC.ts;
 
 %% Mode 1: Initialization
 % Set number of particles:
@@ -104,12 +106,70 @@ end % end init
 %% Mode 2: Estimator iteration.
 % If init = 0, we perform a regular update of the estimator.
 
-% Implement your estimator here!
+%% DYNAMIC OF THE SYSTEM
 
-% Replace the following:
-postParticles.x = zeros(2,N);
-postParticles.y = zeros(2,N);
-postParticles.h = zeros(2,N);
+%% Step 1 (S1): Prior update/Prediction step
+
+% Apply the process equation to the particles
+
+for n = 1:N
+    % Define synonyms for easier understanding
+    xA = prevPostParticles.x(1,n);
+    xB = prevPostParticles.x(2,n);
+    yA = prevPostParticles.y(1,n);
+    yB = prevPostParticles.y(2,n);
+    hA = prevPostParticles.h(1,n);
+    hB = prevPostParticles.h(2,n);
+    uA = act(1);
+    uB = act(2);
+
+    % Process Equation
+    %
+    xA = xA + dt*(uA*cos(hA));
+    yA = yA + dt*(uA*sin(hA));
+    hA = newHeading(hA,xA,yA,uA);
+
+    xB = xB + dt*(uB*cos(hB));
+    yB = yB + dt*(uB*sin(hB));
+    hB = newHeading(hB,xB,yB,uB);
+
+    % Assign to new variables
+    postParticles.x(1,n) = xA;
+    postParticles.x(2,n) = xB;
+    postParticles.y(1,n) = yA;
+    postParticles.y(2,n) = yB;
+    postParticles.h(1,n) = hA;
+    postParticles.h(2,n) = hB;
+end
+
+%% Step 2 (S2): A posteriori update/Measurement update step
+
+
+function newHeading = newHeading(oldHeading, oldX, oldY, oldU)
+    
+    newHeading = oldHeading;
+    % TODO: Check if orientation changes because of a bouncing and add noise to heading
+    
+    % Upper wall:
+    if (oldY == L) % && ...
+    end
+    
+    % Right wall:
+    if (oldX == L) % && ...
+    end
+    
+    % Lower wall:
+    if (oldY == 0) && (oldU*sin(oldHeading) < 0)
+    end
+    
+    % Left wall:
+    if (oldX == 0) % && ...
+    end
+    
+    % Lower wall:
+    if (oldY == 0) && (oldU*sin(oldHeading) < 0)
+    end
+end
 
 end % end estimator
 

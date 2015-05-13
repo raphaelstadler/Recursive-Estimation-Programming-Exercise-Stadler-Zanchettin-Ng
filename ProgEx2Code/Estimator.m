@@ -110,8 +110,15 @@ end % end init
 
 %% Step 1 (S1): Prior update/Prediction step
 
-% Apply the process equation to the particles
+% Calculate resulting approximation for f_xp
+BinSize = 0.05; % Corresponds to 
+NumOfBins = ceil(L/BinSize);
+f_xP = zeros(6,NumOfBins);
 
+dX = BinSize*L;    % x and y in 0..L
+dH = BinSize*2*pi; % theta in -pi..pi
+
+% Apply the process equation to the particles
 for n = 1:N
     % Define synonyms for easier understanding
     xA = prevPostParticles.x(1,n);
@@ -128,12 +135,20 @@ for n = 1:N
     hA = newHeading(hA,xA,yA,uA); % new hA needs old xA and old yA, so update hA first.
     xA = xA + dt*(uA*cos(hA));
     yA = yA + dt*(uA*sin(hA));
-
+    
     hB = newHeading(hB,xB,yB,uB); % new hB needs old xB and old yB, so update hB first.
     xB = xB + dt*(uB*cos(hB));
     yB = yB + dt*(uB*sin(hB));
     
+    for binId = 1:NumOfBins
+       if (xA > (binId-1)*dX) && xA <= binId*dX)
+         f_xP(1,binId) = f_xP(1,binId) + 1;
+       end
+    end
+    
     % Assign to new variables
+    % Theses variables are considered as the
+    % x_p (prior variables)
     postParticles.x(1,n) = xA;
     postParticles.x(2,n) = xB;
     postParticles.y(1,n) = yA;
@@ -144,6 +159,54 @@ end
 
 %% Step 2 (S2): A posteriori update/Measurement update step
 
+% Noise-free measurement
+
+z_correctRobot = zeros(N,4); % N x 4: For each particle there are 4 measurements
+
+for k = 1:N
+% For all particles
+
+    w = drawTriangularRVSample(4);  % parameter defines the vector length of the RV
+    z_correctRobot(k,1) = sqrt((xA - L)^2 + yA^2) + w(1);
+    z_correctRobot(k,2) = sqrt((xA - L)^2 + yA^2) + w(2);
+    z_correctRobot(k,3) = sqrt((xA - L)^2 + yA^2) + w(3);
+    z_correctRobot(k,4) = sqrt((xA - L)^2 + yA^2) + w(4);
+end
+
+% f_xM(xi) = sum(beta_n*delta(xi-x_p)
+z_correctRobot = 0;
+
+% Actual measurement
+z_bar = sens;
+
+% Likelihood of measurement given position: f(z[k]=z_bar|x_p[k])
+%
+% s_bar,    wrong robot is measured:    z_bar[k] consistent with z_correctRobot[k]
+% 1-s_bar,  correct robot is measured:  z_bar[k] not consistent with z_correctRobot[k]
+likelihoodZBar = zeros(N,1);
+
+for i=1:4
+    if z_correctRobot[i] == z_bar[i]
+        likelihoodZBar[i] = s_bar;
+    else
+        likelihoodZBar[i] = 1-s_bar;
+    end
+end
+
+
+% Measurement Likelihood beta_n
+
+% Resampling:
+% ---------------------------------
+% Draw N uniform samples r_n
+% Pick particle n_bar, such that:
+% sum(beta_n,n,1,n_bar) >= r_n and
+% sum(beta_n,n,1,n_bar-1) < r_n
+
+
+% Sample Impoverishment: Roughening
+% ----------------------------------
+% Perturb the particles after resampling
 
 function newHeading = newHeading(oldHeading, oldX, oldY, oldU)
     
@@ -167,6 +230,13 @@ function newHeading = newHeading(oldHeading, oldX, oldY, oldU)
     end
     
 end
+
+    function wRV = drawTriangularRVSample(size)
+        u = unif(
+        wRV = zeros(size,1);
+        for i = 1:size
+            wRV = random(
+        random(pd)
 
 end % end estimator
 

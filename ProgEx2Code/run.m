@@ -127,7 +127,7 @@ SHOWSENSORS = 1;    % show the sensor measurements (use for debugging)
 colorRobotParticlesA = 'm'; % color of particles for robot A
 colorActualRobotA = 'm';    % color of actual robot A
 colorRobotParticlesB = 'b'; % color of particles for robot B
-colorActualRobotB = 'b';    % color of particles for robot B
+colorActualRobotB = 'b';    % color of actual robot B
 axisScaling = 0.1;          % scaling for axes, to show some extra space
                             % about the bounding box defined by KC.L
 nbins = 40;                 % number of bins in the histograms

@@ -107,7 +107,7 @@ B = knownConst.WheelBase;
 uv = actuate(1);
 ur = actuate(2);
 
-%% DYNAMIC OF THE SYSTEM;
+%% DYNAMIC OF THE SYSTEM
 % X = [x,y,r,W]
 % q(t,x) = X_dot    (Note that, actuate u is constant during time period, noise v set to zero)
 q = @(t,x) x(4)*uv*...

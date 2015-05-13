@@ -1,4 +1,4 @@
-function [trackErrorNorm] = run(designPart)
+function trackErrorNorm = run(designPart)
 % run(designPart)
 %
 % Main function for Extended Kalman Filter programming exercise.
@@ -30,7 +30,7 @@ function [trackErrorNorm] = run(designPart)
 % [24.04.15, MM]    2015 version
 
 % clear command window, close figures
-%clc;
+clc;
 close all;
 
 
@@ -41,7 +41,7 @@ if nargin<1 || ((designPart~=1) && (designPart~=2))
     error('Wrong input argument.  You have to call run(1) or run(2) corresponding to the estimator design part considered.');
     return;
 else
-    %disp(['Executing ''run'' for estimator design part #',num2str(designPart),'.']);
+    disp(['Executing ''run'' for estimator design part #',num2str(designPart),'.']);
 end;
 
 
@@ -73,8 +73,8 @@ N = size(tm,1);
 
 %% Run the Estimator
 
-% Initialize the estimator. % x = [x,y,r,W] 
-estState = [0;0;0;0];
+% Initialize the estimator.  
+estState = [];
 posEst = zeros(N,2);
 oriEst = zeros(N,1);
 radiusEst = zeros(N,1);
@@ -88,9 +88,6 @@ radiusVar = zeros(N,1);
 for n = 2:N
     [posEst(n,:),oriEst(n),radiusEst(n),posVar(n,:),oriVar(n),radiusVar(n),estState] = ...
         Estimator(estState,input(n,:),sense(n,:),tm(n),knownConst,designPart);
-    %clc;
-    %disp(['Executing ''run'' for estimator design part #',num2str(designPart),'.']);
-    %disp([num2str(n/N*100),'% completed']);
 end
 
 
@@ -122,7 +119,6 @@ xlabel('x position');
 ylabel('y position');
 title(['position tracking error: ',num2str(trackErrorNorm,6),' m']);
 
-disp(num2str(trackErrorNorm,6));
 %%%%%
 % estimation error (incl. standard deviation)
 %%%%%

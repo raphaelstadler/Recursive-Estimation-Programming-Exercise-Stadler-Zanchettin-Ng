@@ -70,6 +70,9 @@ if(nargin < 4)
     init = 0;
 end
 
+% Side-length of square room
+L = KC.L;
+
 %% Mode 1: Initialization
 % Set number of particles:
 N = 10; % obviously, you will need more particles than 10.
@@ -78,9 +81,22 @@ if (init)
     % These particles are the posterior particles at discrete time k = 0
     % which will be fed into your estimator again at k = 1
     % Replace the following:
-    postParticles.x = zeros(2,N);
-    postParticles.y = zeros(2,N);
-    postParticles.h = zeros(2,N);
+    
+    % At time t = 0:
+    % - robot A starts out in one of the corners where the sensors S_1 = (L,0) and S_2 = (L,L) are located
+    % - robot B starts out in one of the corners where the sensors S_3 = (0,L) and S_4 = (0,0) are located
+    
+    % A at sensors S_1 and B at sensor S_3
+    N_half = floor(N/2);
+    postParticles.x(:,1:N_half)  = repmat([L; 0],1,N_half);
+    postParticles.y(:,1:N_half)  = repmat([0; L],1,N_half);
+    postParticles.h(:,1:N_half)  = repmat([3*pi/4; -pi/4],1,N_half);
+    
+    % A at sensors S_2 and B at sensor S_4
+    postParticles.x(:,(N_half+1):N)  = repmat([L;0],1,N-N_half);
+    postParticles.y(:,(N_half+1):N)  = repmat([L;0],1,N-N_half);
+    postParticles.h(:,(N_half+1):N)  = repmat([-3*pi/4; pi/4],1,N-N_half); % headings: theta_A, theta_B
+    
     % and leave the function
     return;
 end % end init

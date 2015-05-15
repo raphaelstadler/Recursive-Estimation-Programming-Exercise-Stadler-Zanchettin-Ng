@@ -210,58 +210,69 @@ end
 
 function newHeading = newHeading(oldHeading, oldX, oldY, oldU)
     
-    preAlpha = -1;
+    alpha = -1;
     newHeading = oldHeading;
     % TODO: Check if orientation changes because of a bouncing and add noise to heading
     
     % Upper wall:
     if (oldY == L) && (oldU*sin(oldHeading) > 0)
         if oldU*cos(oldHeading) > 0
-            preAlpha = oldHeading;
+            alpha = oldHeading;
         else
-            preAlpha = pi - oldHeading;
+            alpha = pi - oldHeading;
         end
-        postAlpha = preAlpha;
     end
     
     % Right wall:
     if (oldX == L) && (oldU*cos(oldHeading) > 0)
         if oldU*sin(oldHeading) > 0
-            preAlpha = 0.5*pi - oldHeading;
+            alpha = 0.5*pi - oldHeading;
         else
-            preAlpha = -(-0.5*pi - oldHeading);
+            alpha = -(-0.5*pi - oldHeading);
         end
-        postAlpha = preAlpha;
     end
     
     % Lower wall:
     if (oldY == 0) && (oldU*sin(oldHeading) < 0)
         if oldU*cos(oldHeading) > 0
-            preAlpha = -oldHeading;
+            alpha = -oldHeading;
         else
-            preAlpha = -(-pi - oldHeading);
+            alpha = -(-pi - oldHeading);
         end
-        postAlpha = preAlpha;
     end
     
     % Left wall:
     if (oldX == 0) && (oldU*cos(oldHeading) < 0)
         if oldU*sin(oldHeading) > 0
-            preAlpha = oldHeading - 0.5*pi;
+            alpha = oldHeading - 0.5*pi;
         else
-            preAlpha = -(-pi - oldHeading);
+            alpha = -(-pi - oldHeading);
         end
-        postAlpha = preAlpha;
     end
     
 end
 
-    function wRV = drawTriangularRVSample(size)
-        u = unif(
-        wRV = zeros(size,1);
+    function qRV = drawQuadraticRVSample(size)
+        u = rand(size);
+        c = 3/(2*(KC.vbar^3));
+        qRV = zeros(size);
+        for ind = 1:size
+            if (3/c)*u(ind) - KC.vbar^3 > 0
+                qRV(ind) = abs(((3/c)*u(ind) - KC.vbar^3)^(1/3));
+            else
+                qRV(ind) = -abs(((3/c)*u(ind) - KC.vbar^3)^(1/3));
+            end
+        end
+    end
+
+    function tRV = drawTriangularRVSample(size)
+        u = rand(size);
+        tRV = zeros(size);
         for i = 1:size
             wRV = random(
         random(pd)
+        end
+    end
 
 end % end estimator
 

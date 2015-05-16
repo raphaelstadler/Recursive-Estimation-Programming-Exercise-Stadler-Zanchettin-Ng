@@ -267,10 +267,16 @@ end
 
     function tRV = drawTriangularRVSample(size)
         u = rand(size);
+        a = -KC.wbar;
+        b = KC.wbar;
+        c = 0;
         tRV = zeros(size);
-        for i = 1:size
-            wRV = random(
-        random(pd)
+        for ind = 1:size
+            if u(ind) < (c-a)/(b-a)
+                tRV(ind) = a + sqrt(u(ind)*(b-a)*(c-a));
+            else
+                tRV(ind) = b - sqrt((1-u(ind))*(b-a)*(b-c));        
+            end
         end
     end
 

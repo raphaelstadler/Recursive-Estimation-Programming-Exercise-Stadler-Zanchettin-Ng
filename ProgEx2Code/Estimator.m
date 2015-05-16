@@ -77,7 +77,7 @@ dt = KC.ts;
 
 %% Mode 1: Initialization
 % Set number of particles:
-N = 10; % obviously, you will need more particles than 10.
+N = 1000; % obviously, you will need more particles than 10.
 if (init)
     % Do the initialization of your estimator here!
     % These particles are the posterior particles at discrete time k = 0
@@ -118,6 +118,9 @@ f_xP = zeros(6,NumOfBins);
 dX = BinSize*L;    % x and y in 0..L
 dH = BinSize*2*pi; % theta in -pi..pi
 
+sz = [N,1]; % size N particles for noise
+v = drawQuadraticRVSample(sz);  % quadratic noise v
+
 % Apply the process equation to the particles
 for n = 1:N
     % Define synonyms for easier understanding
@@ -132,11 +135,11 @@ for n = 1:N
 
     % Process Equation
     %
-    hA = newHeading(hA,xA,yA,uA); % new hA needs old xA and old yA, so update hA first.
+    hA = newHeading(hA,xA,yA,uA,v(n)); % new hA needs old xA and old yA, so update hA first.
     xA = xA + dt*(uA*cos(hA));
     yA = yA + dt*(uA*sin(hA));
     
-    hB = newHeading(hB,xB,yB,uB); % new hB needs old xB and old yB, so update hB first.
+    hB = newHeading(hB,xB,yB,uB,v(n)); % new hB needs old xB and old yB, so update hB first.
     xB = xB + dt*(uB*cos(hB));
     yB = yB + dt*(uB*sin(hB));
     
@@ -208,7 +211,7 @@ end
 % ----------------------------------
 % Perturb the particles after resampling
 
-function newHeading = newHeading(oldHeading, oldX, oldY, oldU)
+function newHeading = newHeading(oldHeading, oldX, oldY, oldU, noiseV)
     
     alpha = -1;
     newHeading = oldHeading;
@@ -218,8 +221,12 @@ function newHeading = newHeading(oldHeading, oldX, oldY, oldU)
     if (oldY == L) && (oldU*sin(oldHeading) > 0)
         if oldU*cos(oldHeading) > 0
             alpha = oldHeading;
+            alpha = alpha*(1 + noiseV);
+            newHeading = -alpha;
         else
             alpha = pi - oldHeading;
+            alpha = alpha*(1 + noiseV);
+            newHeading = -pi + alpha;
         end
     end
     
@@ -227,8 +234,12 @@ function newHeading = newHeading(oldHeading, oldX, oldY, oldU)
     if (oldX == L) && (oldU*cos(oldHeading) > 0)
         if oldU*sin(oldHeading) > 0
             alpha = 0.5*pi - oldHeading;
+            alpha = alpha*(1 + noiseV);
+            newHeading = 0.5*pi + alpha;
         else
             alpha = -(-0.5*pi - oldHeading);
+            alpha = alpha*(1 + noiseV);
+            newHeading = -0.5*pi - alpha;
         end
     end
     
@@ -236,8 +247,12 @@ function newHeading = newHeading(oldHeading, oldX, oldY, oldU)
     if (oldY == 0) && (oldU*sin(oldHeading) < 0)
         if oldU*cos(oldHeading) > 0
             alpha = -oldHeading;
+            alpha = alpha*(1 + noiseV);
+            newHeading = alpha;
         else
             alpha = -(-pi - oldHeading);
+            alpha = alpha*(1 + noiseV);
+            newHeading = pi - alpha;
         end
     end
     
@@ -245,11 +260,14 @@ function newHeading = newHeading(oldHeading, oldX, oldY, oldU)
     if (oldX == 0) && (oldU*cos(oldHeading) < 0)
         if oldU*sin(oldHeading) > 0
             alpha = oldHeading - 0.5*pi;
+            alpha = alpha*(1 + noiseV);
+            newHeading = 0.5*pi - alpha;
         else
             alpha = -(-pi - oldHeading);
+            alpha = alpha*(1 + noiseV);
+            newHeading = -0.5*pi + alpha;
         end
-    end
-    
+    end    
 end
 
     function qRV = drawQuadraticRVSample(size)

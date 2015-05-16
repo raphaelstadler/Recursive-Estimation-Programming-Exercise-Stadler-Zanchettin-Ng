@@ -118,7 +118,7 @@ f_xP = zeros(6,NumOfBins);
 dX = BinSize*L;    % x and y in 0..L
 dH = BinSize*2*pi; % theta in -pi..pi
 
-sz = [N,1]; % size N particles for noise
+sz = [N,1];                     % size N particles for noise
 v = drawQuadraticRVSample(sz);  % quadratic noise v
 
 % Apply the process equation to the particles
@@ -144,8 +144,28 @@ for n = 1:N
     yB = yB + dt*(uB*sin(hB));
     
     for binId = 1:NumOfBins
-       if (xA > (binId-1)*dX) && xA <= binId*dX)
+       if (xA > (binId-1)*dX) && (xA <= binId*dX)
          f_xP(1,binId) = f_xP(1,binId) + 1;
+       end
+       
+       if (yA > (binId-1)*dX) && (yA <= binId*dX)
+         f_xP(2,binId) = f_xP(2,binId) + 1;
+       end
+       
+       if (hA > (binId-1)*dH) && (hA <= binId*dH)
+         f_xP(3,binId) = f_xP(3,binId) + 1;
+       end
+       
+       if (xB > (binId-1)*dX) && (xB <= binId*dX)
+         f_xP(4,binId) = f_xP(4,binId) + 1;
+       end
+       
+       if (yB > (binId-1)*dX) && (yB <= binId*dX)
+         f_xP(5,binId) = f_xP(5,binId) + 1;
+       end
+       
+       if (hB > (binId-1)*dH) && (hB <= binId*dH)
+         f_xP(6,binId) = f_xP(6,binId) + 1;
        end
     end
     
@@ -189,10 +209,10 @@ z_bar = sens;
 likelihoodZBar = zeros(N,1);
 
 for i=1:4
-    if z_correctRobot[i] == z_bar[i]
-        likelihoodZBar[i] = s_bar;
+    if z_correctRobot(i) == z_bar(i)
+        likelihoodZBar(i) = s_bar;
     else
-        likelihoodZBar[i] = 1-s_bar;
+        likelihoodZBar(i) = 1-s_bar;
     end
 end
 

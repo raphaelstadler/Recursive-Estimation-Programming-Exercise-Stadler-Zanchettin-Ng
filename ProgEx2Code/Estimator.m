@@ -205,7 +205,7 @@ for k = 1:N
 end
 
 % f_xM(xi) = sum(beta_n*delta(xi-x_p)
-z_correctRobot = 0;
+% z_correctRobot = 0;
 
 % Actual measurement
 z_bar = sens;
@@ -246,7 +246,7 @@ function newHeading = newHeading(oldHeading, oldX, oldY, oldU, noiseV)
     % TODO: Check if orientation changes because of a bouncing and add noise to heading
     
     % Upper wall:
-    if (oldY >= L) && (oldU*sin(oldHeading) > 0)
+    if (oldY == L) && (oldU*sin(oldHeading) > 0)
         if oldU*cos(oldHeading) > 0
             alpha = oldHeading;
             alpha = alpha*(1 + noiseV);
@@ -259,7 +259,7 @@ function newHeading = newHeading(oldHeading, oldX, oldY, oldU, noiseV)
     end
     
     % Right wall:
-    if (oldX >= L) && (oldU*cos(oldHeading) > 0)
+    if (oldX == L) && (oldU*cos(oldHeading) > 0)
         if oldU*sin(oldHeading) > 0
             alpha = 0.5*pi - oldHeading;
             alpha = alpha*(1 + noiseV);
@@ -272,7 +272,7 @@ function newHeading = newHeading(oldHeading, oldX, oldY, oldU, noiseV)
     end
     
     % Lower wall:
-    if (oldY <= 0) && (oldU*sin(oldHeading) < 0)
+    if (oldY == 0) && (oldU*sin(oldHeading) < 0)
         if oldU*cos(oldHeading) > 0
             alpha = -oldHeading;
             alpha = alpha*(1 + noiseV);
@@ -285,7 +285,7 @@ function newHeading = newHeading(oldHeading, oldX, oldY, oldU, noiseV)
     end
     
     % Left wall:
-    if (oldX <= 0) && (oldU*cos(oldHeading) < 0)
+    if (oldX == 0) && (oldU*cos(oldHeading) < 0)
         if oldU*sin(oldHeading) > 0
             alpha = oldHeading - 0.5*pi;
             alpha = alpha*(1 + noiseV);

@@ -118,9 +118,6 @@ f_xP = zeros(6,NumOfBins);
 dX = BinSize*L;    % x and y in 0..L
 dH = BinSize*2*pi; % theta in -pi..pi
 
-sz = [N,1];                     % size N particles for noise
-v = drawQuadraticRVSample(sz);  % quadratic noise v
-
 % Apply the process equation to the particles
 for n = 1:N
     % Define synonyms for easier understanding
@@ -132,14 +129,16 @@ for n = 1:N
     hB = prevPostParticles.h(2,n);
     uA = act(1);
     uB = act(2);
-
+    
+    vA = drawQuadraticRVSample(1); % draw noise from quadratic pdf for post-bounce angles
+    vB = drawQuadraticRVSample(1);
     % Process Equation
     %
-    hA = newHeading(hA,xA,yA,uA,v(n)); % new hA needs old xA and old yA, so update hA first.
+    hA = newHeading(hA,xA,yA,uA,vA); % new hA needs old xA and old yA, so update hA first
     xA = xA + dt*(uA*cos(hA));
     yA = yA + dt*(uA*sin(hA));
     
-    hB = newHeading(hB,xB,yB,uB,v(n)); % new hB needs old xB and old yB, so update hB first.
+    hB = newHeading(hB,xB,yB,uB,vB); % new hB needs old xB and old yB, so update hB first
     xB = xB + dt*(uB*cos(hB));
     yB = yB + dt*(uB*sin(hB));
     
@@ -238,7 +237,7 @@ function newHeading = newHeading(oldHeading, oldX, oldY, oldU, noiseV)
     % TODO: Check if orientation changes because of a bouncing and add noise to heading
     
     % Upper wall:
-    if (oldY == L) && (oldU*sin(oldHeading) > 0)
+    if (oldY >= L) && (oldU*sin(oldHeading) > 0)
         if oldU*cos(oldHeading) > 0
             alpha = oldHeading;
             alpha = alpha*(1 + noiseV);
@@ -251,7 +250,7 @@ function newHeading = newHeading(oldHeading, oldX, oldY, oldU, noiseV)
     end
     
     % Right wall:
-    if (oldX == L) && (oldU*cos(oldHeading) > 0)
+    if (oldX >= L) && (oldU*cos(oldHeading) > 0)
         if oldU*sin(oldHeading) > 0
             alpha = 0.5*pi - oldHeading;
             alpha = alpha*(1 + noiseV);
@@ -264,7 +263,7 @@ function newHeading = newHeading(oldHeading, oldX, oldY, oldU, noiseV)
     end
     
     % Lower wall:
-    if (oldY == 0) && (oldU*sin(oldHeading) < 0)
+    if (oldY <= 0) && (oldU*sin(oldHeading) < 0)
         if oldU*cos(oldHeading) > 0
             alpha = -oldHeading;
             alpha = alpha*(1 + noiseV);
@@ -277,7 +276,7 @@ function newHeading = newHeading(oldHeading, oldX, oldY, oldU, noiseV)
     end
     
     % Left wall:
-    if (oldX == 0) && (oldU*cos(oldHeading) < 0)
+    if (oldX <= 0) && (oldU*cos(oldHeading) < 0)
         if oldU*sin(oldHeading) > 0
             alpha = oldHeading - 0.5*pi;
             alpha = alpha*(1 + noiseV);

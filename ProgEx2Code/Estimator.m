@@ -132,6 +132,7 @@ for n = 1:N
     
     vA = drawQuadraticRVSample(1); % draw noise from quadratic pdf for post-bounce angles
     vB = drawQuadraticRVSample(1);
+    
     % Process Equation
     %
     hA = newHeading(hA,xA,yA,uA,vA); % new hA needs old xA and old yA, so update hA first
@@ -315,6 +316,11 @@ end
                 tRV(ind) = b - sqrt((1-u(ind))*(b-a)*(b-c));        
             end
         end
+    end
+
+    function bRV = drawBooleanRVSample(size)
+        u = rand(size);
+        bRV = (u > KC.sbar);
     end
 
 end % end estimator

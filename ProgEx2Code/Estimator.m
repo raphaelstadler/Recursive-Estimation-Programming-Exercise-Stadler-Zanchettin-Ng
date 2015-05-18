@@ -189,11 +189,19 @@ z_correctRobot = zeros(N,4); % N x 4: For each particle there are 4 measurements
 for k = 1:N
 % For all particles
 
+    xA = postParticles.x(1,k);
+    xB = postParticles.x(2,k);
+    yA = postParticles.y(1,k);
+    yB = postParticles.y(2,k);
+    hA = postParticles.h(1,k);
+    hB = postParticles.h(2,k);
+
     w = drawTriangularRVSample(4);  % parameter defines the vector length of the RV
-    z_correctRobot(k,1) = sqrt((xA - L)^2 + yA^2) + w(1);
-    z_correctRobot(k,2) = sqrt((xA - L)^2 + yA^2) + w(2);
-    z_correctRobot(k,3) = sqrt((xA - L)^2 + yA^2) + w(3);
-    z_correctRobot(k,4) = sqrt((xA - L)^2 + yA^2) + w(4);
+    s = drawBooleanRVSample(4);     % parameter defines whether the sensors detected the correct robot.
+    z_correctRobot(k,1) = s(1)*sqrt((xA - L)^2 + yA^2) + (1 - s(1))*sqrt((xB - L)^2 + yB^2) + w(1);
+    z_correctRobot(k,2) = s(2)*sqrt((xA - L)^2 + (yA - L)^2) + (1 - s(2))*sqrt((xB - L)^2 + (yB - L)^2) + w(2);
+    z_correctRobot(k,3) = s(3)*sqrt(xB^2 + (yB - L)^2) + (1 - s(3))*sqrt(xA^2 + (yA - L)^2) + w(3);
+    z_correctRobot(k,4) = s(4)*sqrt(xB^2 + yB^2) + (1 - s(4))*sqrt(xA^2 + yA^2) + w(4);
 end
 
 % f_xM(xi) = sum(beta_n*delta(xi-x_p)

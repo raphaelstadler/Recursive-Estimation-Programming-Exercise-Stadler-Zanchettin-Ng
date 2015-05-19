@@ -106,68 +106,49 @@ end % end init
 %% Mode 2: Estimator iteration.
 % If init = 0, we perform a regular update of the estimator.
 
-%% DYNAMIC OF THE SYSTEM
-
 %% Step 1 (S1): Prior update/Prediction step
 
-% Define bin size which is used to calculate resulting approximation for f_xp
-BinSize = 0.05; 
+% Define synonyms for easier understanding
+xA = prevPostParticles.x(1,:);
+yA = prevPostParticles.y(1,:);
+hA = prevPostParticles.h(1,:);
 
-xA = zeros(N,1);
-yA = zeros(N,1);
-hA = zeros(N,1);
-xB = zeros(N,1);
-yB = zeros(N,1);
-hB = zeros(N,1);
+xB = prevPostParticles.x(2,:);
+yB = prevPostParticles.y(2,:);
+hB = prevPostParticles.h(2,:);
 
-vA = zeros(N,1);
-vB = zeros(N,1);
+uA = act(1);
+uB = act(2);
+
+vA = drawQuadraticRVSample(N); % draw noise from quadratic pdf for post-bounce angles
+vB = drawQuadraticRVSample(N);
 
 % Apply the process equation to the particles
 for n = 1:N
-    % Define synonyms for easier understanding
-    xA(n) = prevPostParticles.x(1,n);
-    xB(n) = prevPostParticles.x(2,n);
-    yA(n) = prevPostParticles.y(1,n);
-    yB(n) = prevPostParticles.y(2,n);
-    hA(n) = prevPostParticles.h(1,n);
-    hB(n) = prevPostParticles.h(2,n);
-    uA(n) = act(1);
-    uB(n) = act(2);
-    
-    vA(n) = drawQuadraticRVSample(1); % draw noise from quadratic pdf for post-bounce angles
-    vB(n) = drawQuadraticRVSample(1);
-    
-    % Process Equation
+    % DYNAMIC OF THE SYSTEM: Process Equation
     %
     % Propagate N particles x_m through process dynamics, to get new
     % particles x_p
-    hA(n) = newHeading(hA(n),xA(n),yA(n),uA(n),vA(n)); % new hA needs old xA and old yA, so update hA first
-    xA(n) = xA(n) + dt*(uA(n)*cos(hA(n)));
-    yA(n) = yA(n) + dt*(uA(n)*sin(hA(n)));
+    hA_P(n) = newHeading(hA(n),xA(n),yA(n),uA,vA(n)); % new hA needs old xA and old yA, so update hA first
+    xA_P(n) = xA(n) + dt*(uA*cos(hA(n)));
+    yA_P(n) = yA(n) + dt*(uA*sin(hA(n)));
     
-    hB(n) = newHeading(hB(n),xB(n),yB(n),uB(n),vB(n)); % new hB needs old xB and old yB, so update hB first
-    xB(n) = xB(n) + dt*(uB(n)*cos(hB(n)));
-    yB(n) = yB(n) + dt*(uB(n)*sin(hB(n)));
-    
-    % Assign to new variables
-    % Theses variables are considered as the
-    % x_p (prior variables)
-    postParticles.x(1,n) = xA(n);
-    postParticles.x(2,n) = xB(n);
-    postParticles.y(1,n) = yA(n);
-    postParticles.y(2,n) = yB(n);
-    postParticles.h(1,n) = hA(n);
-    postParticles.h(2,n) = hB(n);
+    hB_P(n) = newHeading(hB(n),xB(n),yB(n),uB,vB(n)); % new hB needs old xB and old yB, so update hB first
+    xB_P(n) = xB(n) + dt*(uB*cos(hB(n)));
+    yB_P(n) = yB(n) + dt*(uB*sin(hB(n)));
 end
 
 % Represent prior PDF with the Monte-Carlo sampling (as done above) of the
 % the measurement variables x_m
+
+% Please note, that f_xP is in fact never used !
+
 f_xP = ApproximatePDF(...
-            [0;0;-pi;0;0;-pi], ...      % min       of xA, yA, hA, xB, yB, hB
-            [L;L;pi;L;L;pi], ...        % max       of xA, yA, hA, xB, yB, hB
-            0.05, ...                   % bin size  of xA, yA, hA, xB, yB, hB
-            [xA; yA; hA; xB; yB; hB] ); % sample vector
+            [0;0;-pi;0;0;-pi], ...                  % min       of xA_P, yA_P, hA_P, xB_P, yB_P, hB_P
+            [L;L;pi;L;L;pi], ...                    % max       of xA_P, yA_P, hA_P, xB_P, yB_P, hB_P
+            0.05, ...                               % bin size  of xA_P, yA_P, hA_P, xB_P, yB_P, hB_P
+            [xA_P; yA_P; hA_P; xB_P; yB_P; hB_P] ); % sample vector
+
 
 %% Step 2 (S2): A posteriori update/Measurement update step
 
@@ -180,20 +161,13 @@ z_correctRobot = zeros(4,N); % 4 x N: For each particle there are 4 measurements
 
 for n = 1:N
     % For all particles
-    xA(n) = postParticles.x(1,n);
-    xB(n) = postParticles.x(2,n);
-    yA(n) = postParticles.y(1,n);
-    yB(n) = postParticles.y(2,n);
-    hA(n) = postParticles.h(1,n);
-    hB(n) = postParticles.h(2,n);
-
     w = drawTriangularRVSample(4);  % parameter defines the vector length of the RV
     s = drawBooleanRVSample(4);     % parameter defines whether the sensors detected the correct robot.
     
-    z_correctRobot(1,n) = s(1)*sqrt((xA(n) - L)^2 + yA(n)^2) + (1 - s(1))*sqrt((xB(n) - L)^2 + yB(n)^2) + w(1);
-    z_correctRobot(2,n) = s(2)*sqrt((xA(n) - L)^2 + (yA(n) - L)^2) + (1 - s(2))*sqrt((xB(n) - L)^2 + (yB(n) - L)^2) + w(2);
-    z_correctRobot(3,n) = s(3)*sqrt(xB(n)^2 + (yB(n) - L)^2) + (1 - s(3))*sqrt(xA(n)^2 + (yA(n) - L)^2) + w(3);
-    z_correctRobot(4,n) = s(4)*sqrt(xB(n)^2 + yB(n)^2) + (1 - s(4))*sqrt(xA(n)^2 + yA(n)^2) + w(4);
+    z_correctRobot(1,n) = s(1)*sqrt((xA_P(n) - L)^2 + yA_P(n)^2) + (1 - s(1))*sqrt((xB_P(n) - L)^2 + yB_P(n)^2) + w(1);
+    z_correctRobot(2,n) = s(2)*sqrt((xA_P(n) - L)^2 + (yA_P(n) - L)^2) + (1 - s(2))*sqrt((xB_P(n) - L)^2 + (yB_P(n) - L)^2) + w(2);
+    z_correctRobot(3,n) = s(3)*sqrt(xB_P(n)^2 + (yB_P(n) - L)^2) + (1 - s(3))*sqrt(xA_P(n)^2 + (yA_P(n) - L)^2) + w(3);
+    z_correctRobot(4,n) = s(4)*sqrt(xB_P(n)^2 + yB_P(n)^2) + (1 - s(4))*sqrt(xA_P(n)^2 + yA_P(n)^2) + w(4);
 end
 
 % Approximate PDF of z_correctRobot (which was calculated given x_p)
@@ -228,7 +202,6 @@ end
 % xB_m = xB .* beta(2,:);
 % yB_m = yB .* beta(2,:);
 % hB_m = hB .* beta(2,:);
-
 xA_m = xA;
 yA_m = yA;
 hA_m = hA;
@@ -294,6 +267,17 @@ for n = 1:N
     yB_M(n) = yB_m(n_bar(5));
     hB_M(n) = hB_m(n_bar(6));
 end % for...n
+
+% Assign to new variables
+% Theses variables are considered as the
+% x_p (prior variables)
+postParticles.x(1,n) = xA_M(n);
+postParticles.y(1,n) = yA_M(n);
+postParticles.h(1,n) = hA_M(n);
+
+postParticles.x(2,n) = xB_M(n);
+postParticles.y(2,n) = yB_M(n);
+postParticles.h(2,n) = hB_M(n);
 
 % Sample Impoverishment: Roughening
 % ----------------------------------
@@ -362,7 +346,7 @@ function f_vec = ApproximatePDF(minVec, maxVec, binSizes, sampleVec)
     % Please note, that with the current implementation, the binSizes is a
     % scalar (it has to be the same for all sample types (e.g. xA,yA,hA,...))
     
-    numOfBins = ceil(L/BinSize);
+    numOfBins = ceil(L/binSizes);
     numOfSamples = size(sampleVec,2);
     
     f_vec = zeros(6,numOfBins);

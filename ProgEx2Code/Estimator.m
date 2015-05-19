@@ -209,40 +209,33 @@ end
 % TODO: scale with beta (matrix dimensions are currently wrong and all
 % information of beta should be used.
 
-% xA_m = xA .* beta(1,:);
-% yA_m = yA .* beta(1,:);
-% hA_m = hA .* beta(1,:);
+% xA_m = xA_P .* beta(1,:);
+% yA_m = yA_P .* beta(1,:);
+% hA_m = hA_P .* beta(1,:);
 % 
-% xB_m = xB .* beta(2,:);
-% yB_m = yB .* beta(2,:);
-% hB_m = hB .* beta(2,:);
-xA_m = xA;
-yA_m = yA;
-hA_m = hA;
+% xB_m = xB_P .* beta(2,:);
+% yB_m = yB_P .* beta(2,:);
+% hB_m = hB_P .* beta(2,:);
+xA_m = xA_P;
+yA_m = yA_P;
+hA_m = hA_P;
 
-xB_m = xB;
-yB_m = yB;
-hB_m = hB;
+xB_m = xB_P;
+yB_m = yB_P;
+hB_m = hB_P;
 
 % Now represent PDF of x_m
 [f_xm,~] = ApproximatePDF(...
             [0;0;-pi;0;0;-pi], ...                  % min       of xA_m, yA_m, hA_m, xB_m, yB_m, hB_m
             [L;L;pi;L;L;pi], ...                    % max       of xA_m, yA_m, hA_m, xB_m, yB_m, hB_m
-            100, ...                                % numOfBins  of xA_m, yA_m, hA_m, xB_m, yB_m, hB_m
+            100, ...                                % numOfBins of xA_m, yA_m, hA_m, xB_m, yB_m, hB_m
             [xA_m; yA_m; hA_m; xB_m; yB_m; hB_m] ); % sample vector
-
-% Actual measurement
-z_bar = sens;
 
 % Resampling
 % ---------------------------------
-xA_M = zeros(N,1);
-yA_M = zeros(N,1);
-hA_M = zeros(N,1);
-
-xB_M = zeros(N,1);
-yB_M = zeros(N,1);
-hB_M = zeros(N,1);
+% Initialize variables which will be assigned after measurement update
+xA_M = zeros(N,1); yA_M = zeros(N,1); hA_M = zeros(N,1);
+xB_M = zeros(N,1); yB_M = zeros(N,1); hB_M = zeros(N,1);
 
 % Draw N uniform samples r_n
 n_bar = ones(6);
@@ -253,22 +246,13 @@ for n = 1:N
     % Pick particle n_bar, such that:
     % sum(beta_n,n,1,n_bar) >= r_n and
     % sum(beta_n,n,1,n_bar-1) < r_n
-
     for k = 1:6
         for ind = 1:N
-            % TODO: Fix indexing error of beta
-            % Should be something like this:
-            % if (accumSum(k) < r(k)) && ((accumSum(k) + beta(k,1)) >= r(k))
-            % AND
-            % accumSum(k) = accumSum(k) + beta(k,ind);
-            if (accumSum(k) < r(k)) && ((accumSum(k) + beta(k,1)) >= r(k))
-            % if (accumSum(k) < r(k)) && ((accumSum(k) + beta(k,ind)) >= r(k))
+            if (accumSum(k) < r(k)) && ((accumSum(k) + beta(k,ind)) >= r(k))
                 n_bar(k) = ind;
                 break;
             else
-                accumSum(k) = accumSum(k) + beta(k,1);
-                % accumSum(k) = accumSum(k) + beta(k,ind);
-                
+                accumSum(k) = accumSum(k) + beta(k,ind);
             end
         end
     end
@@ -282,6 +266,19 @@ for n = 1:N
     hB_M(n) = hB_m(n_bar(6));
 end % for...n
 
+% Sample Impoverishment: Roughening
+% ----------------------------------
+% Perturb the particles after resampling
+perturb = 0.01;
+
+xA_M(:) = xA_M - perturb*(rand(N,1)-0.5*ones(N,1));
+yA_M(:) = yA_M + perturb*(rand(N,1)-0.5*ones(N,1));
+hA_M(:) = hA_M + perturb*(rand(N,1)-0.5*ones(N,1));
+
+xB_M(:) = xB_M + perturb*(rand(N,1)-0.5*ones(N,1));
+yB_M(:) = yB_M + perturb*(rand(N,1)-0.5*ones(N,1));
+hB_M(:) = hB_M + perturb*(rand(N,1)-0.5*ones(N,1));
+
 % Assign to new variables
 % Theses variables are considered as the
 % x_p (prior variables)
@@ -292,10 +289,6 @@ postParticles.h(1,n) = hA_M(n);
 postParticles.x(2,n) = xB_M(n);
 postParticles.y(2,n) = yB_M(n);
 postParticles.h(2,n) = hB_M(n);
-
-% Sample Impoverishment: Roughening
-% ----------------------------------
-% Perturb the particles after resampling
 
 function newHeading = newHeading(oldHeading, oldX, oldY, oldU, noiseV)
     

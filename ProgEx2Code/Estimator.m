@@ -110,130 +110,190 @@ end % end init
 
 %% Step 1 (S1): Prior update/Prediction step
 
-% Calculate resulting approximation for f_xp
-BinSize = 0.05; % Corresponds to 
-NumOfBins = ceil(L/BinSize);
-f_xP = zeros(6,NumOfBins);
+% Define bin size which is used to calculate resulting approximation for f_xp
+BinSize = 0.05; 
 
-dX = BinSize*L;    % x and y in 0..L
-dH = BinSize*2*pi; % theta in -pi..pi
+xA = zeros(N,1);
+yA = zeros(N,1);
+hA = zeros(N,1);
+xB = zeros(N,1);
+yB = zeros(N,1);
+hB = zeros(N,1);
+
+vA = zeros(N,1);
+vB = zeros(N,1);
 
 % Apply the process equation to the particles
 for n = 1:N
     % Define synonyms for easier understanding
-    xA = prevPostParticles.x(1,n);
-    xB = prevPostParticles.x(2,n);
-    yA = prevPostParticles.y(1,n);
-    yB = prevPostParticles.y(2,n);
-    hA = prevPostParticles.h(1,n);
-    hB = prevPostParticles.h(2,n);
-    uA = act(1);
-    uB = act(2);
+    xA(n) = prevPostParticles.x(1,n);
+    xB(n) = prevPostParticles.x(2,n);
+    yA(n) = prevPostParticles.y(1,n);
+    yB(n) = prevPostParticles.y(2,n);
+    hA(n) = prevPostParticles.h(1,n);
+    hB(n) = prevPostParticles.h(2,n);
+    uA(n) = act(1);
+    uB(n) = act(2);
     
-    vA = drawQuadraticRVSample(1); % draw noise from quadratic pdf for post-bounce angles
-    vB = drawQuadraticRVSample(1);
+    vA(n) = drawQuadraticRVSample(1); % draw noise from quadratic pdf for post-bounce angles
+    vB(n) = drawQuadraticRVSample(1);
     
     % Process Equation
     %
-    hA = newHeading(hA,xA,yA,uA,vA); % new hA needs old xA and old yA, so update hA first
-    xA = xA + dt*(uA*cos(hA));
-    yA = yA + dt*(uA*sin(hA));
+    % Propagate N particles x_m through process dynamics, to get new
+    % particles x_p
+    hA(n) = newHeading(hA(n),xA(n),yA(n),uA(n),vA(n)); % new hA needs old xA and old yA, so update hA first
+    xA(n) = xA(n) + dt*(uA(n)*cos(hA(n)));
+    yA(n) = yA(n) + dt*(uA(n)*sin(hA(n)));
     
-    hB = newHeading(hB,xB,yB,uB,vB); % new hB needs old xB and old yB, so update hB first
-    xB = xB + dt*(uB*cos(hB));
-    yB = yB + dt*(uB*sin(hB));
-    
-    for binId = 1:NumOfBins
-       if (xA > (binId-1)*dX) && (xA <= binId*dX)
-         f_xP(1,binId) = f_xP(1,binId) + 1;
-       end
-       
-       if (yA > (binId-1)*dX) && (yA <= binId*dX)
-         f_xP(2,binId) = f_xP(2,binId) + 1;
-       end
-       
-       if (hA > (binId-1)*dH) && (hA <= binId*dH)
-         f_xP(3,binId) = f_xP(3,binId) + 1;
-       end
-       
-       if (xB > (binId-1)*dX) && (xB <= binId*dX)
-         f_xP(4,binId) = f_xP(4,binId) + 1;
-       end
-       
-       if (yB > (binId-1)*dX) && (yB <= binId*dX)
-         f_xP(5,binId) = f_xP(5,binId) + 1;
-       end
-       
-       if (hB > (binId-1)*dH) && (hB <= binId*dH)
-         f_xP(6,binId) = f_xP(6,binId) + 1;
-       end
-    end
+    hB(n) = newHeading(hB(n),xB(n),yB(n),uB(n),vB(n)); % new hB needs old xB and old yB, so update hB first
+    xB(n) = xB(n) + dt*(uB(n)*cos(hB(n)));
+    yB(n) = yB(n) + dt*(uB(n)*sin(hB(n)));
     
     % Assign to new variables
     % Theses variables are considered as the
     % x_p (prior variables)
-    postParticles.x(1,n) = xA;
-    postParticles.x(2,n) = xB;
-    postParticles.y(1,n) = yA;
-    postParticles.y(2,n) = yB;
-    postParticles.h(1,n) = hA;
-    postParticles.h(2,n) = hB;
+    postParticles.x(1,n) = xA(n);
+    postParticles.x(2,n) = xB(n);
+    postParticles.y(1,n) = yA(n);
+    postParticles.y(2,n) = yB(n);
+    postParticles.h(1,n) = hA(n);
+    postParticles.h(2,n) = hB(n);
 end
+
+% Represent prior PDF with the Monte-Carlo sampling (as done above) of the
+% the measurement variables x_m
+f_xP = ApproximatePDF(...
+            [0;0;-pi;0;0;-pi], ...      % min       of xA, yA, hA, xB, yB, hB
+            [L;L;pi;L;L;pi], ...        % max       of xA, yA, hA, xB, yB, hB
+            0.05, ...                   % bin size  of xA, yA, hA, xB, yB, hB
+            [xA; yA; hA; xB; yB; hB] ); % sample vector
 
 %% Step 2 (S2): A posteriori update/Measurement update step
 
-% Noise-free measurement
+% Noise-free measurement: 
+% Apply measurement equation to particles and calculate which measurement you would expect.
+% This represents the probability of any measurement (e.g. your current
+% measurement) given the prior state variable.
 
-z_correctRobot = zeros(N,4); % N x 4: For each particle there are 4 measurements
+z_correctRobot = zeros(4,N); % 4 x N: For each particle there are 4 measurements
 
-for k = 1:N
-% For all particles
-
-    xA = postParticles.x(1,k);
-    xB = postParticles.x(2,k);
-    yA = postParticles.y(1,k);
-    yB = postParticles.y(2,k);
-    hA = postParticles.h(1,k);
-    hB = postParticles.h(2,k);
+for n = 1:N
+    % For all particles
+    xA(n) = postParticles.x(1,n);
+    xB(n) = postParticles.x(2,n);
+    yA(n) = postParticles.y(1,n);
+    yB(n) = postParticles.y(2,n);
+    hA(n) = postParticles.h(1,n);
+    hB(n) = postParticles.h(2,n);
 
     w = drawTriangularRVSample(4);  % parameter defines the vector length of the RV
     s = drawBooleanRVSample(4);     % parameter defines whether the sensors detected the correct robot.
-    z_correctRobot(k,1) = s(1)*sqrt((xA - L)^2 + yA^2) + (1 - s(1))*sqrt((xB - L)^2 + yB^2) + w(1);
-    z_correctRobot(k,2) = s(2)*sqrt((xA - L)^2 + (yA - L)^2) + (1 - s(2))*sqrt((xB - L)^2 + (yB - L)^2) + w(2);
-    z_correctRobot(k,3) = s(3)*sqrt(xB^2 + (yB - L)^2) + (1 - s(3))*sqrt(xA^2 + (yA - L)^2) + w(3);
-    z_correctRobot(k,4) = s(4)*sqrt(xB^2 + yB^2) + (1 - s(4))*sqrt(xA^2 + yA^2) + w(4);
+    
+    z_correctRobot(1,n) = s(1)*sqrt((xA(n) - L)^2 + yA(n)^2) + (1 - s(1))*sqrt((xB(n) - L)^2 + yB(n)^2) + w(1);
+    z_correctRobot(2,n) = s(2)*sqrt((xA(n) - L)^2 + (yA(n) - L)^2) + (1 - s(2))*sqrt((xB(n) - L)^2 + (yB(n) - L)^2) + w(2);
+    z_correctRobot(3,n) = s(3)*sqrt(xB(n)^2 + (yB(n) - L)^2) + (1 - s(3))*sqrt(xA(n)^2 + (yA(n) - L)^2) + w(3);
+    z_correctRobot(4,n) = s(4)*sqrt(xB(n)^2 + yB(n)^2) + (1 - s(4))*sqrt(xA(n)^2 + yA(n)^2) + w(4);
 end
 
-% f_xM(xi) = sum(beta_n*delta(xi-x_p)
-% z_correctRobot = 0;
+% Approximate PDF of z_correctRobot (which was calculated given x_p)
+f_zm_xp = ApproximatePDF(...
+            [0;0;0;0], ...              % min       of sensors S1, S2, S3, S4
+            sqrt(2)*L*[1;1;1;1], ...    % max       of sensors S1, S2, S3, S4
+            0.05, ...                   % bin size  of sensors S1, S2, S3, S4
+            z_correctRobot );           % sample vector
+
+% Calculate normalization constants alphas
+% size(alpha): 4 x 1
+% For every state variable (in this case sensor), you have a normalization constant.
+alpha = 1./sum(f_zm_xp,2);
+
+% Calculate measurement likelihood beta_n which will be used to represent f_xm lateron
+% Beta should have size 6 x numOfBins
+beta = zeros(length(alpha),size(f_zm_xp,2));
+for k = 1:length(alpha)
+    beta(k,:) = alpha(k).*f_zm_xp(k,:);
+end
+
+% Perform scaling of original x_p to finally represent PDF of x_m
+% Probability of the prior variables given the measurement
+
+% TODO: scale with beta (matrix dimensions are currently wrong and all
+% information of beta should be used.
+
+% xA_m = xA .* beta(1,:);
+% yA_m = yA .* beta(1,:);
+% hA_m = hA .* beta(1,:);
+% 
+% xB_m = xB .* beta(2,:);
+% yB_m = yB .* beta(2,:);
+% hB_m = hB .* beta(2,:);
+
+xA_m = xA;
+yA_m = yA;
+hA_m = hA;
+
+xB_m = xB;
+yB_m = yB;
+hB_m = hB;
+
+% Now represent PDF of x_m
+f_xm = ApproximatePDF(...
+            [0;0;-pi;0;0;-pi], ...                  % min       of xA_m, yA_m, hA_m, xB_m, yB_m, hB_m
+            [L;L;pi;L;L;pi], ...                    % max       of xA_m, yA_m, hA_m, xB_m, yB_m, hB_m
+            0.05, ...                               % bin size  of xA_m, yA_m, hA_m, xB_m, yB_m, hB_m
+            [xA_m; yA_m; hA_m; xB_m; yB_m; hB_m] ); % sample vector
 
 % Actual measurement
 z_bar = sens;
 
-% Likelihood of measurement given position: f(z[k]=z_bar|x_p[k])
-%
-% s_bar,    wrong robot is measured:    z_bar[k] consistent with z_correctRobot[k]
-% 1-s_bar,  correct robot is measured:  z_bar[k] not consistent with z_correctRobot[k]
-likelihoodZBar = zeros(N,1);
-
-for i=1:4
-    if z_correctRobot(i) == z_bar(i)
-        likelihoodZBar(i) = s_bar;
-    else
-        likelihoodZBar(i) = 1-s_bar;
-    end
-end
-
-
-% Measurement Likelihood beta_n
-
-% Resampling:
+% Resampling
 % ---------------------------------
-% Draw N uniform samples r_n
-% Pick particle n_bar, such that:
-% sum(beta_n,n,1,n_bar) >= r_n and
-% sum(beta_n,n,1,n_bar-1) < r_n
+xA_M = zeros(N,1);
+yA_M = zeros(N,1);
+hA_M = zeros(N,1);
 
+xB_M = zeros(N,1);
+yB_M = zeros(N,1);
+hB_M = zeros(N,1);
+
+% Draw N uniform samples r_n
+n_bar = ones(6);
+accumSum = zeros(6,1);
+for n = 1:N
+    r = rand(6,1);
+    
+    % Pick particle n_bar, such that:
+    % sum(beta_n,n,1,n_bar) >= r_n and
+    % sum(beta_n,n,1,n_bar-1) < r_n
+
+    for k = 1:6
+        for ind = 1:N
+            % TODO: Fix indexing error of beta
+            % Should be something like this:
+            % if (accumSum(k) < r(k)) && ((accumSum(k) + beta(k,1)) >= r(k))
+            % AND
+            % accumSum(k) = accumSum(k) + beta(k,ind);
+            if (accumSum(k) < r(k)) && ((accumSum(k) + beta(k,1)) >= r(k))
+            % if (accumSum(k) < r(k)) && ((accumSum(k) + beta(k,ind)) >= r(k))
+                n_bar(k) = ind;
+                break;
+            else
+                accumSum(k) = accumSum(k) + beta(k,1);
+                % accumSum(k) = accumSum(k) + beta(k,ind);
+                
+            end
+        end
+    end
+    
+    xA_M(n) = xA_m(n_bar(1));
+    yA_M(n) = yA_m(n_bar(2));
+    hA_M(n) = hA_m(n_bar(3));
+    
+    xB_M(n) = xB_m(n_bar(4));
+    yB_M(n) = yB_m(n_bar(5));
+    hB_M(n) = hB_m(n_bar(6));
+end % for...n
 
 % Sample Impoverishment: Roughening
 % ----------------------------------
@@ -298,38 +358,71 @@ function newHeading = newHeading(oldHeading, oldX, oldY, oldU, noiseV)
     end    
 end
 
-    function qRV = drawQuadraticRVSample(size)
-        u = rand(size);
-        c = 3/(2*(KC.vbar^3));
-        qRV = zeros(size);
-        for ind = 1:size
-            if (3/c)*u(ind) - KC.vbar^3 > 0
-                qRV(ind) = abs(((3/c)*u(ind) - KC.vbar^3)^(1/3));
-            else
-                qRV(ind) = -abs(((3/c)*u(ind) - KC.vbar^3)^(1/3));
+function f_vec = ApproximatePDF(minVec, maxVec, binSizes, sampleVec)
+    % Please note, that with the current implementation, the binSizes is a
+    % scalar (it has to be the same for all sample types (e.g. xA,yA,hA,...))
+    
+    numOfBins = ceil(L/BinSize);
+    numOfSamples = size(sampleVec,2);
+    
+    f_vec = zeros(6,numOfBins);
+    
+    deltaVec = (maxVec-minVec).*binSizes; %dX, dH
+    
+    for sampleId = 1:numOfSamples
+        for vecId = 1:length(minVec) % for xA, yA, hA, xB, yB, hB
+            for binId = 1:numOfBins-1
+               if   (sampleVec(vecId,sampleId) >= (binId-1)*deltaVec(vecId)) && ...
+                    (sampleVec(vecId,sampleId) < binId*deltaVec(vecId))
+               
+                    f_vec(vecId,binId) = f_vec(vecId,binId) + 1/numOfSamples;
+                
+               end
             end
+            
+            % Specially treat last bin to also include right border of bin
+            if   (sampleVec(vecId,sampleId) >= (numOfBins-1)*deltaVec(vecId)) && ...
+                (sampleVec(vecId,sampleId) <= numOfBins*deltaVec(vecId))
+
+                f_vec(vecId,numOfBins) = f_vec(vecId,numOfBins) + 1/numOfSamples;
+            end 
+        end % for...vecId
+    end % for...sampleId     
+end % end of function
+
+
+function qRV = drawQuadraticRVSample(size)
+    u = rand(size);
+    c = 3/(2*(KC.vbar^3));
+    qRV = zeros(size);
+    for ind = 1:size
+        if (3/c)*u(ind) - KC.vbar^3 > 0
+            qRV(ind) = abs(((3/c)*u(ind) - KC.vbar^3)^(1/3));
+        else
+            qRV(ind) = -abs(((3/c)*u(ind) - KC.vbar^3)^(1/3));
         end
     end
+end
 
-    function tRV = drawTriangularRVSample(size)
-        u = rand(size);
-        a = -KC.wbar;
-        b = KC.wbar;
-        c = 0;
-        tRV = zeros(size);
-        for ind = 1:size
-            if u(ind) < (c-a)/(b-a)
-                tRV(ind) = a + sqrt(u(ind)*(b-a)*(c-a));
-            else
-                tRV(ind) = b - sqrt((1-u(ind))*(b-a)*(b-c));        
-            end
+function tRV = drawTriangularRVSample(size)
+    u = rand(size);
+    a = -KC.wbar;
+    b = KC.wbar;
+    c = 0;
+    tRV = zeros(size);
+    for ind = 1:size
+        if u(ind) < (c-a)/(b-a)
+            tRV(ind) = a + sqrt(u(ind)*(b-a)*(c-a));
+        else
+            tRV(ind) = b - sqrt((1-u(ind))*(b-a)*(b-c));        
         end
     end
+end
 
-    function bRV = drawBooleanRVSample(size)
-        u = rand(size);
-        bRV = (u > KC.sbar);
-    end
+function bRV = drawBooleanRVSample(size)
+    u = rand(size);
+    bRV = (u > KC.sbar);
+end
 
 end % end estimator
 

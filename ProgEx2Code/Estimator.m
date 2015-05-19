@@ -77,7 +77,7 @@ dt = KC.ts;
 
 %% Mode 1: Initialization
 % Set number of particles:
-N = 1000; % obviously, you will need more particles than 10.
+N = 10; % obviously, you will need more particles than 10.
 if (init)
     % Do the initialization of your estimator here!
     % These particles are the posterior particles at discrete time k = 0
@@ -123,6 +123,10 @@ uB = act(2);
 vA = drawQuadraticRVSample(N); % draw noise from quadratic pdf for post-bounce angles
 vB = drawQuadraticRVSample(N);
 
+% Initialize variables which will be assigned after prior update
+xA_P = zeros(1,N); yA_P = zeros(1,N); hA_P = zeros(1,N);
+xB_P = zeros(1,N); yB_P = zeros(1,N); hB_P = zeros(1,N);
+
 % Apply the process equation to the particles
 for n = 1:N
     % DYNAMIC OF THE SYSTEM: Process Equation
@@ -143,10 +147,10 @@ end
 
 % Please note, that f_xP is in fact never used !
 
-f_xP = ApproximatePDF(...
+[f_xP,~] = ApproximatePDF(...
             [0;0;-pi;0;0;-pi], ...                  % min       of xA_P, yA_P, hA_P, xB_P, yB_P, hB_P
             [L;L;pi;L;L;pi], ...                    % max       of xA_P, yA_P, hA_P, xB_P, yB_P, hB_P
-            0.05, ...                               % bin size  of xA_P, yA_P, hA_P, xB_P, yB_P, hB_P
+            100, ...                                % numOfBins of xA_P, yA_P, hA_P, xB_P, yB_P, hB_P
             [xA_P; yA_P; hA_P; xB_P; yB_P; hB_P] ); % sample vector
 
 
@@ -171,10 +175,11 @@ for n = 1:N
 end
 
 % Approximate PDF of z_correctRobot (which was calculated given x_p)
-f_zm_xp = ApproximatePDF(...
+% size(f_zm_xp): 4 x numberOfBins
+[f_zm_xp, z_grid] = ApproximatePDF(...
             [0;0;0;0], ...              % min       of sensors S1, S2, S3, S4
             sqrt(2)*L*[1;1;1;1], ...    % max       of sensors S1, S2, S3, S4
-            0.05, ...                   % bin size  of sensors S1, S2, S3, S4
+            100, ...                    % numOfBins of sensors S1, S2, S3, S4
             z_correctRobot );           % sample vector
 
 % Calculate normalization constants alphas
@@ -182,11 +187,20 @@ f_zm_xp = ApproximatePDF(...
 % For every state variable (in this case sensor), you have a normalization constant.
 alpha = 1./sum(f_zm_xp,2);
 
+beta = zeros(6,N);
+
 % Calculate measurement likelihood beta_n which will be used to represent f_xm lateron
-% Beta should have size 6 x numOfBins
-beta = zeros(length(alpha),size(f_zm_xp,2));
-for k = 1:length(alpha)
-    beta(k,:) = alpha(k).*f_zm_xp(k,:);
+% Beta should have size 4 x N
+% Using actual measurements sens(1:4)
+for n = 1:N
+    % How likely is measurement sense(1:4) given xP
+    probab_sens_xp = GetProbabilityFromPDF(f_zm_xp, z_grid, sens); % 4 x 1
+    
+    % TODO: How to reflect dependency of beta with n
+    beta(1,n) = probab_sens_xp(1) * alpha(1); % sens(1)
+    beta(2,n) = probab_sens_xp(2) * alpha(2); % sens(2)
+    beta(3,n) = probab_sens_xp(3) * alpha(3); % sens(3)
+    beta(4,n) = probab_sens_xp(4) * alpha(4); % sens(4)
 end
 
 % Perform scaling of original x_p to finally represent PDF of x_m
@@ -211,10 +225,10 @@ yB_m = yB;
 hB_m = hB;
 
 % Now represent PDF of x_m
-f_xm = ApproximatePDF(...
+[f_xm,~] = ApproximatePDF(...
             [0;0;-pi;0;0;-pi], ...                  % min       of xA_m, yA_m, hA_m, xB_m, yB_m, hB_m
             [L;L;pi;L;L;pi], ...                    % max       of xA_m, yA_m, hA_m, xB_m, yB_m, hB_m
-            0.05, ...                               % bin size  of xA_m, yA_m, hA_m, xB_m, yB_m, hB_m
+            100, ...                                % numOfBins  of xA_m, yA_m, hA_m, xB_m, yB_m, hB_m
             [xA_m; yA_m; hA_m; xB_m; yB_m; hB_m] ); % sample vector
 
 % Actual measurement
@@ -342,16 +356,20 @@ function newHeading = newHeading(oldHeading, oldX, oldY, oldU, noiseV)
     end    
 end
 
-function f_vec = ApproximatePDF(minVec, maxVec, binSizes, sampleVec)
-    % Please note, that with the current implementation, the binSizes is a
+function [f_vec, gridVec] = ApproximatePDF(minVec, maxVec, numOfBins, sampleVec)
+    % Please note, that with the current implementation, the numOfBins is a
     % scalar (it has to be the same for all sample types (e.g. xA,yA,hA,...))
     
-    numOfBins = ceil(L/binSizes);
     numOfSamples = size(sampleVec,2);
     
-    f_vec = zeros(6,numOfBins);
+    f_vec = zeros(length(minVec),numOfBins);
     
-    deltaVec = (maxVec-minVec).*binSizes; %dX, dH
+    deltaVec = (maxVec-minVec)./numOfBins; %dX, dH
+    gridVec = zeros(length(deltaVec), numOfBins);
+    
+    for i = 1:length(deltaVec)
+        gridVec(i,:) = minVec(i)+0.5*deltaVec(i):deltaVec(i):maxVec(i)-0.5*deltaVec(i);
+    end
     
     for sampleId = 1:numOfSamples
         for vecId = 1:length(minVec) % for xA, yA, hA, xB, yB, hB
@@ -374,6 +392,41 @@ function f_vec = ApproximatePDF(minVec, maxVec, binSizes, sampleVec)
     end % for...sampleId     
 end % end of function
 
+function probabValues = GetProbabilityFromPDF(pdf_func, gridVec, evaluatePoints)
+    if size(pdf_func,1) ~= length(evaluatePoints)
+        error('Dimensions of PDF and vectors of points where PDF is evaluated have to comfirm');
+        return;
+    end
+
+    % This implementation assumes constant deltaVec over whole grid
+    deltaVec = gridVec(:,2) - gridVec(:,1);
+    probabValues = zeros(length(deltaVec),1);
+    probabInd = ones(length(deltaVec),1);
+    
+    for vecId = 1:length(evaluatePoints)
+        % Walk through gridVec to see which value should be taken to
+        % extract probability
+        for binId = 1:size(pdf_func,2)-1
+            if evaluatePoints(vecId) >= gridVec(binId) && ...
+               evaluatePoints(vecId) < gridVec(binId+1)
+           
+                dist_ID = norm(evaluatePoints(vecId) - gridVec(binId),2);
+                dist_IDplusOne = norm(evaluatePoints(vecId) - gridVec(binId+1),2);
+                
+                if (dist_ID < dist_IDplusOne)
+                    probabInd(vecId) = binId;
+                else
+                    probabInd(vecId) = binId+1;
+                end
+                break;
+            end % if 
+        end % for...binId
+        
+        % Assign actual probability values to output variable
+        probabValues(vecId) = pdf_func(vecId, probabInd(vecId)) / deltaVec(vecId);
+        
+    end % for...vecId
+end
 
 function qRV = drawQuadraticRVSample(size)
     u = rand(size);

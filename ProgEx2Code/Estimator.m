@@ -148,6 +148,33 @@ end
 
 %% Step 2 (S2): A posteriori update/Measurement update step
 
+if sens == Inf*ones(size(sens))
+    % No sensor measurements available:
+    % Completely skip measurement update step   
+    postParticles.x(1,:) = xA_P(:);
+    postParticles.y(1,:) = yA_P(:);
+    postParticles.h(1,:) = hA_P(:);
+
+    postParticles.x(2,:) = xB_P(:);
+    postParticles.y(2,:) = yB_P(:);
+    postParticles.h(2,:) = hB_P(:);
+    return;
+end
+
+% TODO: Calculate "mean positions" of particles A and B
+
+if sens(1) ~= Inf && sens(2) == Inf
+    sense(2) = 1; % A
+elseif sens(1) == Inf && sens(2) ~= Inf
+    sense(1) = 1; % A
+end
+
+if sens(3) ~= Inf && sens(4) == Inf
+    sense(3) = 2; % B
+elseif sens(3) == Inf && sens(4) ~= Inf
+    sense(4) = 2; % B
+end
+
 % Noise-free measurement: 
 % Apply measurement equation to particles and calculate which measurement you would expect.
 % This represents the probability of the measurement (e.g. your current measurement) given the prior states.

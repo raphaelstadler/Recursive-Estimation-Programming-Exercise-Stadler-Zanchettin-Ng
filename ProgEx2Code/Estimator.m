@@ -120,8 +120,8 @@ hB = prevPostParticles.h(2,:);
 uA = act(1);
 uB = act(2);
 
-vA = drawQuadraticRVSample(N); % draw noise from quadratic pdf for post-bounce angles
-vB = drawQuadraticRVSample(N);
+vA = drawQuadraticRVSample([N,1]); % draw noise from quadratic pdf for post-bounce angles
+vB = drawQuadraticRVSample([N,1]);
 
 % Initialize variables which will be assigned after prior update
 xA_P = zeros(1,N); yA_P = zeros(1,N); hA_P = zeros(1,N);
@@ -153,7 +153,6 @@ end
             100, ...                                % numOfBins of xA_P, yA_P, hA_P, xB_P, yB_P, hB_P
             [xA_P; yA_P; hA_P; xB_P; yB_P; hB_P] ); % sample vector
 
-
 %% Step 2 (S2): A posteriori update/Measurement update step
 
 % Noise-free measurement: 
@@ -163,28 +162,29 @@ end
 
 z_correctRobot = zeros(4,N); % 4 x N: For each particle there are 4 measurements
 
+w = drawTriangularRVSample([4, N]);  % parameter defines the vector length of the RV
+s = drawBooleanRVSample([4, N]);     % parameter defines whether the sensors detected the correct robot.
 for n = 1:N
     % For all particles
-    w = drawTriangularRVSample(4);  % parameter defines the vector length of the RV
-    s = drawBooleanRVSample(4);     % parameter defines whether the sensors detected the correct robot.
-    
-    z_correctRobot(1,n) = s(1)*sqrt((xA_P(n) - L)^2 + yA_P(n)^2) + (1 - s(1))*sqrt((xB_P(n) - L)^2 + yB_P(n)^2) + w(1);
-    z_correctRobot(2,n) = s(2)*sqrt((xA_P(n) - L)^2 + (yA_P(n) - L)^2) + (1 - s(2))*sqrt((xB_P(n) - L)^2 + (yB_P(n) - L)^2) + w(2);
-    z_correctRobot(3,n) = s(3)*sqrt(xB_P(n)^2 + (yB_P(n) - L)^2) + (1 - s(3))*sqrt(xA_P(n)^2 + (yA_P(n) - L)^2) + w(3);
-    z_correctRobot(4,n) = s(4)*sqrt(xB_P(n)^2 + yB_P(n)^2) + (1 - s(4))*sqrt(xA_P(n)^2 + yA_P(n)^2) + w(4);
+    z_correctRobot(1,n) = s(1,n)*sqrt((xA_P(n) - L)^2 + yA_P(n)^2) + (1 - s(1,n))*sqrt((xB_P(n) - L)^2 + yB_P(n)^2) + w(1,n);
+    z_correctRobot(2,n) = s(2,n)*sqrt((xA_P(n) - L)^2 + (yA_P(n) - L)^2) + (1 - s(2,n))*sqrt((xB_P(n) - L)^2 + (yB_P(n) - L)^2) + w(2,n);
+    z_correctRobot(3,n) = s(3,n)*sqrt(xB_P(n)^2 + (yB_P(n) - L)^2) + (1 - s(3,n))*sqrt(xA_P(n)^2 + (yA_P(n) - L)^2) + w(3,n);
+    z_correctRobot(4,n) = s(4,n)*sqrt(xB_P(n)^2 + yB_P(n)^2) + (1 - s(4,n))*sqrt(xA_P(n)^2 + yA_P(n)^2) + w(4,n);
 end
 
 % Approximate PDF of z_correctRobot (which was calculated given x_p)
 % size(f_zm_xp): 4 x numberOfBins
 [f_zm_xp, z_grid] = ApproximatePDF(...
-            [0;0;0;0], ...              % min       of sensors S1, S2, S3, S4
-            sqrt(2)*L*[1;1;1;1], ...    % max       of sensors S1, S2, S3, S4
-            100, ...                    % numOfBins of sensors S1, S2, S3, S4
-            z_correctRobot );           % sample vector
+            -KC.wbar*[1;1;1;1], ...             % min       of sensors S1, S2, S3, S4
+            (sqrt(2)*L+KC.wbar)*[1;1;1;1], ...  % max       of sensors S1, S2, S3, S4
+            100, ...                            % numOfBins of sensors S1, S2, S3, S4
+            z_correctRobot );                   % sample vector
 
 % Calculate normalization constants alphas
 % size(alpha): 4 x 1
 % For every state variable (in this case sensor), you have a normalization constant.
+%test = sum(f_zm_xp,2);
+
 alpha = 1./sum(f_zm_xp,2);
 
 beta = zeros(6,N);
@@ -208,21 +208,13 @@ end
 
 % TODO: scale with beta (matrix dimensions are currently wrong and all
 % information of beta should be used.
+xA_m = xA_P .* beta(1,:);
+yA_m = yA_P .* beta(1,:);
+hA_m = hA_P .* beta(1,:);
 
-% xA_m = xA_P .* beta(1,:);
-% yA_m = yA_P .* beta(1,:);
-% hA_m = hA_P .* beta(1,:);
-% 
-% xB_m = xB_P .* beta(2,:);
-% yB_m = yB_P .* beta(2,:);
-% hB_m = hB_P .* beta(2,:);
-xA_m = xA_P;
-yA_m = yA_P;
-hA_m = hA_P;
-
-xB_m = xB_P;
-yB_m = yB_P;
-hB_m = hB_P;
+xB_m = xB_P .* beta(2,:);
+yB_m = yB_P .* beta(2,:);
+hB_m = hB_P .* beta(2,:);
 
 % Now represent PDF of x_m
 [f_xm,~] = ApproximatePDF(...
@@ -271,7 +263,7 @@ end % for...n
 % Perturb the particles after resampling
 perturb = 0.01;
 
-xA_M(:) = xA_M - perturb*(rand(N,1)-0.5*ones(N,1));
+xA_M(:) = xA_M + perturb*(rand(N,1)-0.5*ones(N,1));
 yA_M(:) = yA_M + perturb*(rand(N,1)-0.5*ones(N,1));
 hA_M(:) = hA_M + perturb*(rand(N,1)-0.5*ones(N,1));
 
@@ -291,71 +283,68 @@ postParticles.y(2,n) = yB_M(n);
 postParticles.h(2,n) = hB_M(n);
 
 function newHeading = newHeading(oldHeading, oldX, oldY, oldU, noiseV)
-    
-    alpha = -1;
     newHeading = oldHeading;
-    % TODO: Check if orientation changes because of a bouncing and add noise to heading
     
     % Upper wall:
     if (oldY == L) && (oldU*sin(oldHeading) > 0)
         if oldU*cos(oldHeading) > 0
-            alpha = oldHeading;
-            alpha = alpha*(1 + noiseV);
-            newHeading = -alpha;
+            bounce = oldHeading; % alpha angle
+            bounce = bounce*(1 + noiseV);
+            newHeading = -bounce;
         else
-            alpha = pi - oldHeading;
-            alpha = alpha*(1 + noiseV);
-            newHeading = -pi + alpha;
+            bounce = pi - oldHeading;
+            bounce = bounce*(1 + noiseV);
+            newHeading = -pi + bounce;
         end
     end
     
     % Right wall:
     if (oldX == L) && (oldU*cos(oldHeading) > 0)
         if oldU*sin(oldHeading) > 0
-            alpha = 0.5*pi - oldHeading;
-            alpha = alpha*(1 + noiseV);
-            newHeading = 0.5*pi + alpha;
+            bounce = 0.5*pi - oldHeading;
+            bounce = bounce*(1 + noiseV);
+            newHeading = 0.5*pi + bounce;
         else
-            alpha = -(-0.5*pi - oldHeading);
-            alpha = alpha*(1 + noiseV);
-            newHeading = -0.5*pi - alpha;
+            bounce = -(-0.5*pi - oldHeading);
+            bounce = bounce*(1 + noiseV);
+            newHeading = -0.5*pi - bounce;
         end
     end
     
     % Lower wall:
     if (oldY == 0) && (oldU*sin(oldHeading) < 0)
         if oldU*cos(oldHeading) > 0
-            alpha = -oldHeading;
-            alpha = alpha*(1 + noiseV);
-            newHeading = alpha;
+            bounce = -oldHeading;
+            bounce = bounce*(1 + noiseV);
+            newHeading = bounce;
         else
-            alpha = -(-pi - oldHeading);
-            alpha = alpha*(1 + noiseV);
-            newHeading = pi - alpha;
+            bounce = -(-pi - oldHeading);
+            bounce = bounce*(1 + noiseV);
+            newHeading = pi - bounce;
         end
     end
     
     % Left wall:
     if (oldX == 0) && (oldU*cos(oldHeading) < 0)
         if oldU*sin(oldHeading) > 0
-            alpha = oldHeading - 0.5*pi;
-            alpha = alpha*(1 + noiseV);
-            newHeading = 0.5*pi - alpha;
+            bounce = oldHeading - 0.5*pi;
+            bounce = bounce*(1 + noiseV);
+            newHeading = 0.5*pi - bounce;
         else
-            alpha = -(-pi - oldHeading);
-            alpha = alpha*(1 + noiseV);
-            newHeading = -0.5*pi + alpha;
+            bounce = -(-pi - oldHeading);
+            bounce = bounce*(1 + noiseV);
+            newHeading = -0.5*pi + bounce;
         end
     end    
 end
 
-function [f_vec, gridVec] = ApproximatePDF(minVec, maxVec, numOfBins, sampleVec)
+function [pdf_vec, gridVec] = ApproximatePDF(minVec, maxVec, numOfBins, sampleVec)
     % Please note, that with the current implementation, the numOfBins is a
     % scalar (it has to be the same for all sample types (e.g. xA,yA,hA,...))
     
     numOfSamples = size(sampleVec,2);
     
-    f_vec = zeros(length(minVec),numOfBins);
+    pdf_vec = zeros(length(minVec),numOfBins);
     
     deltaVec = (maxVec-minVec)./numOfBins; %dX, dH
     gridVec = zeros(length(deltaVec), numOfBins);
@@ -364,25 +353,28 @@ function [f_vec, gridVec] = ApproximatePDF(minVec, maxVec, numOfBins, sampleVec)
         gridVec(i,:) = minVec(i)+0.5*deltaVec(i):deltaVec(i):maxVec(i)-0.5*deltaVec(i);
     end
     
-    for sampleId = 1:numOfSamples
-        for vecId = 1:length(minVec) % for xA, yA, hA, xB, yB, hB
+    for vecId = 1:length(minVec) % for xA, yA, hA, xB, yB, hB
+        for sampleId = 1:numOfSamples
             for binId = 1:numOfBins-1
-               if   (sampleVec(vecId,sampleId) >= (binId-1)*deltaVec(vecId)) && ...
-                    (sampleVec(vecId,sampleId) < binId*deltaVec(vecId))
+               lowerLimit = (binId-1)*deltaVec(vecId)+minVec(vecId);
+               upperLimit = binId*deltaVec(vecId)+minVec(vecId);
+               if   (sampleVec(vecId,sampleId) >= lowerLimit) && ...
+                    (sampleVec(vecId,sampleId) < upperLimit)
                
-                    f_vec(vecId,binId) = f_vec(vecId,binId) + 1/numOfSamples;
-                
+                    pdf_vec(vecId,binId) = pdf_vec(vecId,binId) + 1/numOfSamples;
+                    break;
                end
             end
-            
+           lastLowerLimit = (numOfBins-1)*deltaVec(vecId)+minVec(vecId);
+           lastUpperLimit = numOfBins*deltaVec(vecId)+minVec(vecId);
             % Specially treat last bin to also include right border of bin
-            if   (sampleVec(vecId,sampleId) >= (numOfBins-1)*deltaVec(vecId)) && ...
-                (sampleVec(vecId,sampleId) <= numOfBins*deltaVec(vecId))
+            if   (sampleVec(vecId,sampleId) >= lastLowerLimit) && ...
+                 (sampleVec(vecId,sampleId) <= lastUpperLimit)   % For last bin: use <= instead of <
 
-                f_vec(vecId,numOfBins) = f_vec(vecId,numOfBins) + 1/numOfSamples;
+                pdf_vec(vecId,numOfBins) = pdf_vec(vecId,numOfBins) + 1/numOfSamples;
             end 
-        end % for...vecId
-    end % for...sampleId     
+        end % for...sampleId
+    end % for...vecId
 end % end of function
 
 function probabValues = GetProbabilityFromPDF(pdf_func, gridVec, evaluatePoints)
@@ -397,6 +389,11 @@ function probabValues = GetProbabilityFromPDF(pdf_func, gridVec, evaluatePoints)
     probabInd = ones(length(deltaVec),1);
     
     for vecId = 1:length(evaluatePoints)
+        if evaluatePoints(vecId) == Inf % No measurement available
+            probabValues(vecId) = 0;
+            break;
+        end
+        
         % Walk through gridVec to see which value should be taken to
         % extract probability
         for binId = 1:size(pdf_func,2)-1

@@ -147,11 +147,11 @@ end
 
 % Please note, that f_xP is in fact never used !
 
-[f_xP,~] = ApproximatePDF(...
-            [0;0;-pi;0;0;-pi], ...                  % min       of xA_P, yA_P, hA_P, xB_P, yB_P, hB_P
-            [L;L;pi;L;L;pi], ...                    % max       of xA_P, yA_P, hA_P, xB_P, yB_P, hB_P
-            100, ...                                % numOfBins of xA_P, yA_P, hA_P, xB_P, yB_P, hB_P
-            [xA_P; yA_P; hA_P; xB_P; yB_P; hB_P] ); % sample vector
+% [f_xP,~] = ApproximatePDF(...
+%             [0;0;-pi;0;0;-pi], ...                  % min       of xA_P, yA_P, hA_P, xB_P, yB_P, hB_P
+%             [L;L;pi;L;L;pi], ...                    % max       of xA_P, yA_P, hA_P, xB_P, yB_P, hB_P
+%             100, ...                                % numOfBins of xA_P, yA_P, hA_P, xB_P, yB_P, hB_P
+%             [xA_P; yA_P; hA_P; xB_P; yB_P; hB_P] ); % sample vector
 
 %% Step 2 (S2): A posteriori update/Measurement update step
 
@@ -162,66 +162,55 @@ end
 
 z_correctRobot = zeros(4,N); % 4 x N: For each particle there are 4 measurements
 
-w = drawTriangularRVSample([4, N]);  % parameter defines the vector length of the RV
-s = drawBooleanRVSample([4, N]);     % parameter defines whether the sensors detected the correct robot.
+%w = drawTriangularRVSample([4, N]);  % parameter defines the vector length of the RV
+%s = drawBooleanRVSample([4, N]);     % parameter defines whether the sensors detected the correct robot.
 for n = 1:N
     % For all particles
-    z_correctRobot(1,n) = s(1,n)*sqrt((xA_P(n) - L)^2 + yA_P(n)^2) + (1 - s(1,n))*sqrt((xB_P(n) - L)^2 + yB_P(n)^2) + w(1,n);
-    z_correctRobot(2,n) = s(2,n)*sqrt((xA_P(n) - L)^2 + (yA_P(n) - L)^2) + (1 - s(2,n))*sqrt((xB_P(n) - L)^2 + (yB_P(n) - L)^2) + w(2,n);
-    z_correctRobot(3,n) = s(3,n)*sqrt(xB_P(n)^2 + (yB_P(n) - L)^2) + (1 - s(3,n))*sqrt(xA_P(n)^2 + (yA_P(n) - L)^2) + w(3,n);
-    z_correctRobot(4,n) = s(4,n)*sqrt(xB_P(n)^2 + yB_P(n)^2) + (1 - s(4,n))*sqrt(xA_P(n)^2 + yA_P(n)^2) + w(4,n);
+    z_noiseFree_correctRobot(1,n)   = sqrt((xA_P(n) - L)^2 + yA_P(n)^2);        % s(1,n) is 1: measure robot A
+    z_noiseFree_wrongRobot(1,n)     = sqrt((xB_P(n) - L)^2 + yB_P(n)^2);        % s(1,n) is 0: measure robot B
+    
+    z_noiseFree_correctRobot(2,n)   = sqrt((xA_P(n) - L)^2 + (yA_P(n) - L)^2);  % s(2,n) is 1: measure robot A
+    z_noiseFree_wrongRobot(2,n)     = sqrt((xB_P(n) - L)^2 + (yB_P(n) - L)^2);  % s(2,n) is 0: measure robot B
+    
+    z_noiseFree_correctRobot(3,n)   = sqrt(xB_P(n)^2 + (yB_P(n) - L)^2);        % s(3,n) is 1: measure robot B
+    z_noiseFree_wrongRobot(3,n)     = sqrt(xA_P(n)^2 + (yA_P(n) - L)^2);        % s(3,n) is 0: measure robot A
+    
+    z_noiseFree_correctRobot(4,n)   = sqrt(xB_P(n)^2 + yB_P(n)^2);              % s(1,n) is 1: measure robot B
+    z_noiseFree_wrongRobot(4,n)     = sqrt(xA_P(n)^2 + yA_P(n)^2);              % s(1,n) is 0: measure robot A   
+
+    for sensId = 1:4
+        % Measurment likelihood: 4 x N
+        f_zm_xp(sensId,n) = GetProbabilityOutOfTriangularPDF(z_noiseFree_correctRobot(sensId,n),sens(sensId)).*(1-KC.sbar) + ...
+                            GetProbabilityOutOfTriangularPDF(z_noiseFree_wrongRobot(sensId,n),sens(sensId)).*KC.sbar;
+    end
 end
 
 % Approximate PDF of z_correctRobot (which was calculated given x_p)
 % size(f_zm_xp): 4 x numberOfBins
-[f_zm_xp, z_grid] = ApproximatePDF(...
-            -KC.wbar*[1;1;1;1], ...             % min       of sensors S1, S2, S3, S4
-            (sqrt(2)*L+KC.wbar)*[1;1;1;1], ...  % max       of sensors S1, S2, S3, S4
-            100, ...                            % numOfBins of sensors S1, S2, S3, S4
-            z_correctRobot );                   % sample vector
+% [f_zm_xp, z_grid] = ApproximatePDF(...
+%             -KC.wbar*[1;1;1;1], ...             % min       of sensors S1, S2, S3, S4
+%             (sqrt(2)*L+KC.wbar)*[1;1;1;1], ...  % max       of sensors S1, S2, S3, S4
+%             100, ...                            % numOfBins of sensors S1, S2, S3, S4
+%             z_correctRobot );                   % sample vector
 
 % Calculate normalization constants alphas
 % size(alpha): 4 x 1
 % For every state variable (in this case sensor), you have a normalization constant.
-%test = sum(f_zm_xp,2);
-
-alpha = 1./sum(f_zm_xp,2);
-
-beta = zeros(6,N);
-
 % Calculate measurement likelihood beta_n which will be used to represent f_xm lateron
 % Beta should have size 4 x N
 % Using actual measurements sens(1:4)
-for n = 1:N
-    % How likely is measurement sense(1:4) given xP
-    probab_sens_xp = GetProbabilityFromPDF(f_zm_xp, z_grid, sens); % 4 x 1
-    
-    % TODO: How to reflect dependency of beta with n
-    beta(1,n) = probab_sens_xp(1) * alpha(1); % sens(1)
-    beta(2,n) = probab_sens_xp(2) * alpha(2); % sens(2)
-    beta(3,n) = probab_sens_xp(3) * alpha(3); % sens(3)
-    beta(4,n) = probab_sens_xp(4) * alpha(4); % sens(4)
-end
+alpha = 1./sum(f_zm_xp,2);
+beta = prod(diag(alpha)*f_zm_xp,1);% .* prod(alpha,1);
 
 % Perform scaling of original x_p to finally represent PDF of x_m
 % Probability of the prior variables given the measurement
 
-% TODO: scale with beta (matrix dimensions are currently wrong and all
-% information of beta should be used.
-xA_m = xA_P .* beta(1,:);
-yA_m = yA_P .* beta(1,:);
-hA_m = hA_P .* beta(1,:);
-
-xB_m = xB_P .* beta(2,:);
-yB_m = yB_P .* beta(2,:);
-hB_m = hB_P .* beta(2,:);
-
 % Now represent PDF of x_m
-[f_xm,~] = ApproximatePDF(...
-            [0;0;-pi;0;0;-pi], ...                  % min       of xA_m, yA_m, hA_m, xB_m, yB_m, hB_m
-            [L;L;pi;L;L;pi], ...                    % max       of xA_m, yA_m, hA_m, xB_m, yB_m, hB_m
-            100, ...                                % numOfBins of xA_m, yA_m, hA_m, xB_m, yB_m, hB_m
-            [xA_m; yA_m; hA_m; xB_m; yB_m; hB_m] ); % sample vector
+% [f_xm,~] = ApproximatePDF(...
+%             [0;0;-pi;0;0;-pi], ...                  % min       of xA_m, yA_m, hA_m, xB_m, yB_m, hB_m
+%             [L;L;pi;L;L;pi], ...                    % max       of xA_m, yA_m, hA_m, xB_m, yB_m, hB_m
+%             100, ...                                % numOfBins of xA_m, yA_m, hA_m, xB_m, yB_m, hB_m
+%             [xA_m; yA_m; hA_m; xB_m; yB_m; hB_m] ); % sample vector
 
 % Resampling
 % ---------------------------------
@@ -238,24 +227,26 @@ for n = 1:N
     % Pick particle n_bar, such that:
     % sum(beta_n,n,1,n_bar) >= r_n and
     % sum(beta_n,n,1,n_bar-1) < r_n
+    
+    % TODO: Use "cumsum" to calculate accumulated sum and "find" to access cumsum
     for k = 1:6
         for ind = 1:N
-            if (accumSum(k) < r(k)) && ((accumSum(k) + beta(k,ind)) >= r(k))
+            if (accumSum(k) < r(k)) && ((accumSum(k) + beta(ind)) >= r(k))
                 n_bar(k) = ind;
                 break;
             else
-                accumSum(k) = accumSum(k) + beta(k,ind);
+                accumSum(k) = accumSum(k) + beta(ind);
             end
         end
     end
     
-    xA_M(n) = xA_m(n_bar(1));
-    yA_M(n) = yA_m(n_bar(2));
-    hA_M(n) = hA_m(n_bar(3));
+    xA_M(n) = xA_P(n_bar(1));
+    yA_M(n) = yA_P(n_bar(2));
+    hA_M(n) = hA_P(n_bar(3));
     
-    xB_M(n) = xB_m(n_bar(4));
-    yB_M(n) = yB_m(n_bar(5));
-    hB_M(n) = hB_m(n_bar(6));
+    xB_M(n) = xB_P(n_bar(4));
+    yB_M(n) = yB_P(n_bar(5));
+    hB_M(n) = hB_P(n_bar(6));
 end % for...n
 
 % Sample Impoverishment: Roughening
@@ -263,7 +254,9 @@ end % for...n
 % Perturb the particles after resampling
 perturb = 0.01;
 
-xA_M(:) = xA_M + perturb*(rand(N,1)-0.5*ones(N,1));
+%
+
+xA_M = xA_M + perturb*(rand(N,1)-0.5*ones(N,1));
 yA_M(:) = yA_M + perturb*(rand(N,1)-0.5*ones(N,1));
 hA_M(:) = hA_M + perturb*(rand(N,1)-0.5*ones(N,1));
 
@@ -336,6 +329,21 @@ function newHeading = newHeading(oldHeading, oldX, oldY, oldU, noiseV)
             newHeading = -0.5*pi + bounce;
         end
     end    
+end
+
+function probab = GetProbabilityOutOfTriangularPDF(centerOfPDF,evaluationPoint)
+    probab = 0;
+    
+    if evaluationPoint >= centerOfPDF - KC.wbar && ...
+       evaluationPoint < centerOfPDF
+        % linear INCREASING
+        probab = 1/(KC.wbar^2)*(evaluationPoint+centerOfPDF)+1/KC.wbar;
+    
+    elseif evaluationPoint >= centerOfPDF && ...
+       evaluationPoint <= centerOfPDF + KC.wbar
+        % linear DECREASING
+        probab = -1/(KC.wbar^2)*(evaluationPoint+centerOfPDF)+1/KC.wbar;
+    end
 end
 
 function [pdf_vec, gridVec] = ApproximatePDF(minVec, maxVec, numOfBins, sampleVec)

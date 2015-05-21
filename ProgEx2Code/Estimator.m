@@ -318,6 +318,17 @@ else
         yA_P(N_half+1:N) = sens(4).*sin(angle(2,N_half+1:N));
     end
 
+    % Put KC.sbar percent of the particles xA to xB and
+    % KC.sbar percent of the particles from xB to xA
+    permutedInd = randperm(N);
+    deltaInd = ceil(KC.sbar*N);
+
+    xA_P(permutedInd(1:deltaInd))   = xB_P(permutedInd(1:deltaInd));
+    yA_P(permutedInd(1:deltaInd))   = yB_P(permutedInd(1:deltaInd));
+
+    xB_P(permutedInd(N-deltaInd:N)) = xA_P(permutedInd(N-deltaInd:N));
+    yB_P(permutedInd(N-deltaInd:N)) = yA_P(permutedInd(N-deltaInd:N));
+    
     beta = 1/N*ones(1,N);
 end
 

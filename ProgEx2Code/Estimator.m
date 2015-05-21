@@ -283,21 +283,19 @@ end % for...n
 % ----------------------------------
 % Perturb the particles after resampling
 
-% TODO: Use formula provided in slides
-% TODO: Normal distribution with zero-mean
-% and std-dev K*E_i*N^(-1/d),
-% K: tuning parameter; d: 6; E_i: maximim inter-sample variability (maximal
-% difference of the particles); N^(-1/d): spacing between nodes of a
-% corresponding uniform, square grid.
+
 perturb = 0.01;
 
-xA_M = xA_M + perturb*(rand(N,1)-0.5*ones(N,1));
-yA_M(:) = yA_M + perturb*(rand(N,1)-0.5*ones(N,1));
-hA_M(:) = hA_M + perturb*(rand(N,1)-0.5*ones(N,1));
+[xA_M, yA_M, hA_M, xB_M, yB_M, hB_M] = performRoughening(xA_M, yA_M, hA_M, xB_M, yB_M, hB_M, 100);
 
-xB_M(:) = xB_M + perturb*(rand(N,1)-0.5*ones(N,1));
-yB_M(:) = yB_M + perturb*(rand(N,1)-0.5*ones(N,1));
-hB_M(:) = hB_M + perturb*(rand(N,1)-0.5*ones(N,1));
+
+% xA_M = xA_M + perturb*(rand(N,1)-0.5*ones(N,1));
+% yA_M(:) = yA_M + perturb*(rand(N,1)-0.5*ones(N,1));
+% hA_M(:) = hA_M + perturb*(rand(N,1)-0.5*ones(N,1));
+% 
+% xB_M(:) = xB_M + perturb*(rand(N,1)-0.5*ones(N,1));
+% yB_M(:) = yB_M + perturb*(rand(N,1)-0.5*ones(N,1));
+% hB_M(:) = hB_M + perturb*(rand(N,1)-0.5*ones(N,1));
 
 % Assign to new variables
 postParticles.x(1,n) = xA_M(n);
@@ -407,5 +405,27 @@ function [xValid, yValid] = shiftParticlesToValidBounds(xTest, yTest)
     end
 end
 
+function [xA_r, yA_r, hA_r, xB_r, yB_r, hB_r] = performRoughening(xA, yA, hA, xB, yB, hB, numOfBins)    
+    % Normal distribution with zero-mean
+    % and std-dev K*E_i*N^(-1/d),
+    completeMatrix = [xA';yA';hA';xB';yB';hB'];
+
+    % K: tuning parameter
+    K = 0.01*ones(6,1);
+    % E_i: maximim inter-sample variability
+    E_i = max(completeMatrix,[],2) - min(completeMatrix,[],2);
+    % N^(-1/d): spacing between nodes of a corresponding uniform, square grid.
+    N_1_d = 1/numOfBins*ones(6,1);
+
+    % TODO: Make sure that these commands produce what they should
+    mu = zeros(6,N);
+    sigma = diag(K.*E_i.*N_1_d);
+    R = sigma;
+    perturb = mu + R*randn(6,N);
+    
+    completeMatrix = completeMatrix + perturb;
+    xA_r = completeMatrix(1,:); yA_r = completeMatrix(2,:); hA_r = completeMatrix(3,:);
+    xB_r = completeMatrix(4,:); yB_r = completeMatrix(5,:); hB_r = completeMatrix(6,:);
+end
 end % end estimator
 

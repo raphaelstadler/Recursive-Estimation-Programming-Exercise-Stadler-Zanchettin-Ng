@@ -77,9 +77,9 @@ dt = KC.ts;
 
 %% Mode 1: Initialization
 % Set number of particles:
-N = 10; % obviously, you will need more particles than 10.
+N = 100; % obviously, you will need more particles than 10.
 if (init)
-    % Do the initialization of your estimator here!
+    % Initialization of estimator:
     % These particles are the posterior particles at discrete time k = 0
     % which will be fed into your estimator again at k = 1
     % Replace the following:
@@ -88,20 +88,24 @@ if (init)
     % - robot A starts out in one of the corners where the sensors S_1 = (L,0) and S_2 = (L,L) are located
     % - robot B starts out in one of the corners where the sensors S_3 = (0,L) and S_4 = (0,0) are located
     
+    % RV in -pi/4..pi/4 and function handle used for initial heading assignment
+    angle_RV = rand(2,N)*0.5*pi-0.25*pi; 
+    getRandomHeading = @(rowNum, startIndCol, endIndCol, offset) angle_RV(rowNum,startIndCol:endIndCol) + offset*ones(1,(endIndCol-startIndCol)+1);
+    
     % A at sensors S_1 and B at sensor S_3
     N_half = floor(N/2);
-    postParticles.x(:,1:N_half)  = repmat([L; 0],1,N_half);
-    postParticles.y(:,1:N_half)  = repmat([0; L],1,N_half);
-    % TODO: Draw a uniform RV to get initial headings
-    postParticles.h(:,1:N_half)  = repmat([3*pi/4; -pi/4],1,N_half);
+    postParticles.x(:,1:N_half)  = repmat([L-eps; 0+eps],1,N_half);
+    postParticles.y(:,1:N_half)  = repmat([0+eps; L-eps],1,N_half);
+    % Draw a uniform RV to get initial headings theta_A, theta_B
+    postParticles.h(:,1:N_half)  = [getRandomHeading(1,1,N_half,3*pi/4); getRandomHeading(2,1,N_half,-pi/4)];
     
     % A at sensors S_2 and B at sensor S_4
-    postParticles.x(:,(N_half+1):N)  = repmat([L;0],1,N-N_half);
-    postParticles.y(:,(N_half+1):N)  = repmat([L;0],1,N-N_half);
-    % TODO: Draw a uniform RV to get initial headings
-    postParticles.h(:,(N_half+1):N)  = repmat([-3*pi/4; pi/4],1,N-N_half); % headings: theta_A, theta_B
+    postParticles.x(:,(N_half+1):N)  = repmat([L-eps;0+eps],1,N-N_half);
+    postParticles.y(:,(N_half+1):N)  = repmat([L-eps;0+eps],1,N-N_half);
+    % Draw a uniform RV to get initial headings theta_A, theta_B
+    postParticles.h(:,(N_half+1):N)  = [getRandomHeading(1,N_half+1,N,-3*pi/4); getRandomHeading(2,N_half+1,N,pi/4)];
     
-    % and leave the function
+    % Leave the function
     return;
 end % end init
 
@@ -125,8 +129,8 @@ vA = drawQuadraticRVSample([N,1]); % draw noise from quadratic pdf for post-boun
 vB = drawQuadraticRVSample([N,1]);
 
 % Initialize variables which will be assigned after prior update
-xA_P = zeros(1,N); yA_P = zeros(1,N); hA_P = zeros(1,N);
-xB_P = zeros(1,N); yB_P = zeros(1,N); hB_P = zeros(1,N);
+xA_P = xA; yA_P = yA; hA_P = hA;
+xB_P = xB; yB_P = yB; hB_P = hB;
 
 % TODO: Optimize newHeading(.) function to be able to treat a vector as a
 % whole
@@ -137,6 +141,12 @@ for n = 1:N
     %
     % Propagate N particles x_m through process dynamics, to get new
     % particles x_p
+    
+    [xA(n), yA(n)] = shiftParticlesToValidBounds(xA(n),yA(n));
+    [xB(n), yB(n)] = shiftParticlesToValidBounds(xB(n),yB(n));
+
+    % TODO: Adapt newHeading function: Currently even at the beginning
+    % there is a detected collision!
     hA_P(n) = newHeading(hA(n),xA(n),yA(n),uA,vA(n)); % new hA needs old xA and old yA, so update hA first
     xA_P(n) = xA(n) + dt*(uA*cos(hA(n)));
     yA_P(n) = yA(n) + dt*(uA*sin(hA(n)));
@@ -144,10 +154,14 @@ for n = 1:N
     hB_P(n) = newHeading(hB(n),xB(n),yB(n),uB,vB(n)); % new hB needs old xB and old yB, so update hB first
     xB_P(n) = xB(n) + dt*(uB*cos(hB(n)));
     yB_P(n) = yB(n) + dt*(uB*sin(hB(n)));
+    
+    [xA_P(n), yA_P(n)] = shiftParticlesToValidBounds(xA_P(n),yA_P(n));
+    [xB_P(n), yB_P(n)] = shiftParticlesToValidBounds(xB_P(n),yB_P(n));
 end
 
 %% Step 2 (S2): A posteriori update/Measurement update step
 
+% if true % Uncomment this, to skip measurement update completely
 if sens == Inf*ones(size(sens))
     % No sensor measurements available:
     % Completely skip measurement update step   
@@ -161,23 +175,32 @@ if sens == Inf*ones(size(sens))
     return;
 end
 
-% TODO: Calculate "mean positions" of particles A and B
+xA_P_mean = mean(xA_P); yA_P_mean = mean(yA_P);
+xB_P_mean = mean(xB_P); yB_P_mean = mean(yB_P);
 
-if sens(1) ~= Inf && sens(2) == Inf
-    sense(2) = 1; % A
+% Substitute missing measurements for robot A
+if sens(1) == Inf && sens(2) == Inf
+    sens(1) = sqrt((xA_P_mean - L)^2 + yA_P_mean^2);
+    sens(2) = sqrt((xA_P_mean - L)^2 + (yA_P_mean - L)^2);
 elseif sens(1) == Inf && sens(2) ~= Inf
-    sense(1) = 1; % A
+    sens(1) = sqrt((xA_P_mean - L)^2 + yA_P_mean^2);
+elseif sens(1) ~= Inf && sens(2) == Inf
+    sens(2) = sqrt((xA_P_mean - L)^2 + (yA_P_mean - L)^2);
 end
 
-if sens(3) ~= Inf && sens(4) == Inf
-    sense(3) = 2; % B
+% Substitute missing measurements for robot B
+if sens(3) == Inf && sens(4) == Inf
+    sens(3) = sqrt(xB_P_mean^2 + (yB_P_mean - L)^2);
+    sens(4) = sqrt(xB_P_mean^2 + yB_P_mean^2);
+elseif sens(3) ~= Inf && sens(4) == Inf
+    sens(3) = sqrt(xB_P_mean^2 + (yB_P_mean - L)^2);
 elseif sens(3) == Inf && sens(4) ~= Inf
-    sense(4) = 2; % B
+    sens(4) = sqrt(xB_P_mean^2 + yB_P_mean^2);
 end
 
 % Noise-free measurement: 
 % Apply measurement equation to particles and calculate which measurement you would expect.
-% This represents the probability of the measurement (e.g. your current measurement) given the prior states.
+% This represents the probability of the measurement (e.g. the current measurement) given the prior states.
 
 % Size of noisefree measurement variables: 4 x N - For each particle there are 4 measurements
 z_noiseFree_correctRobot = zeros(4,N); z_noiseFree_wrongRobot = zeros(4,N);
@@ -201,9 +224,8 @@ for n = 1:N
     for sensId = 1:4
         % Measurment likelihood: 4 x N
         % Using actual measurements sens(:)
-        
-        % TODO: Consider cases where we don't have all the sensor
-        % measurements (INF)
+        % Note, that in the case where not all sensor measurements were
+        % available, sens(.) contains another meaningful value.
         f_zm_xp(sensId,n) = GetProbabilityOutOfTriangularPDF(z_noiseFree_correctRobot(sensId,n),sens(sensId)).*(1-KC.sbar) + ...
                             GetProbabilityOutOfTriangularPDF(z_noiseFree_wrongRobot(sensId,n),sens(sensId)).*KC.sbar;
     end
@@ -214,8 +236,10 @@ end
 % For every sensor, you have a normalization constant.
 % Calculate measurement likelihood beta which will be used to represent f_xM lateron
 % beta should have size 1 x N
+
+% TODO: row sum of f_zm_xp can be zero, which results in alpha = NaN
 alpha = 1./sum(f_zm_xp,2);
-beta = prod(diag(alpha)*f_zm_xp,1);% .* prod(alpha,1);
+beta = prod(diag(alpha)*f_zm_xp,1);
 
 % Resampling
 % ---------------------------------
@@ -365,6 +389,21 @@ function qRV = drawQuadraticRVSample(size)
         else
             qRV(index) = -abs(((3/c)*u(index) - KC.vbar^3)^(1/3));
         end
+    end
+end
+
+function [xValid, yValid] = shiftParticlesToValidBounds(xTest, yTest)
+    xValid = xTest;
+    yValid = yTest;
+    if xTest < 0
+        xValid = 0;
+    elseif xTest >= L
+        xValid = L;
+    end
+    if yTest < 0
+        yValid = 0;
+    elseif yTest > L
+        yValid = L;
     end
 end
 

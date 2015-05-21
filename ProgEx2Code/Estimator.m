@@ -417,11 +417,10 @@ function [xA_r, yA_r, hA_r, xB_r, yB_r, hB_r] = performRoughening(xA, yA, hA, xB
     % N^(-1/d): spacing between nodes of a corresponding uniform, square grid.
     N_1_d = 1/numOfBins*ones(6,1);
 
-    % TODO: Make sure that these commands produce what they should
     mu = zeros(6,N);
-    sigma = diag(K.*E_i.*N_1_d);
-    R = sigma;
-    perturb = mu + R*randn(6,N);
+    sigma = diag(K.*E_i.*N_1_d)*ones(6,N);
+    
+    perturb = normrnd(mu,sigma,6,N)
     
     completeMatrix = completeMatrix + perturb;
     xA_r = completeMatrix(1,:); yA_r = completeMatrix(2,:); hA_r = completeMatrix(3,:);

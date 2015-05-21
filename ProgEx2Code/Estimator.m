@@ -96,13 +96,17 @@ if (init)
     % A at sensors S_1 and B at sensor S_3
     postParticles.x(:,1:N_half)  = repmat([L; 0],1,N_half);
     postParticles.y(:,1:N_half)  = repmat([0; L],1,N_half);
+%     postParticles.x(:,1:N)  = repmat([L; 0],1,N);
+%     postParticles.y(:,1:N)  = repmat([0; L],1,N);
     % Draw a uniform RV to get initial headings theta_A, theta_B
+    % postParticles.h(:,1:N_half)  = repmat([3*pi/8; -3*pi/4],1,N_half); % Can be used for tests
     postParticles.h(:,1:N_half)  = [getRandomHeading(1,1,N_half,3*pi/4); getRandomHeading(2,1,N_half,-pi/4)];
     
     % A at sensors S_2 and B at sensor S_4
     postParticles.x(:,(N_half+1):N)  = repmat([L;0],1,N-N_half);
     postParticles.y(:,(N_half+1):N)  = repmat([L;0],1,N-N_half);
     % Draw a uniform RV to get initial headings theta_A, theta_B
+    %postParticles.h(:,(N_half+1):N)  = repmat([-3*pi/8; pi/2],1,N-N_half); % Can be used for tests
     postParticles.h(:,(N_half+1):N)  = [getRandomHeading(1,N_half+1,N,-3*pi/4); getRandomHeading(2,N_half+1,N,pi/4)];
     
     % Leave the function
@@ -152,8 +156,6 @@ for n = 1:N
     xB_P(n) = xB(n) + dt*(uB*cos(hB(n)));
     yB_P(n) = yB(n) + dt*(uB*sin(hB(n)));
     
-    [xA_P(n), yA_P(n)] = shiftParticlesToValidBounds(xA_P(n),yA_P(n));
-    [xB_P(n), yB_P(n)] = shiftParticlesToValidBounds(xB_P(n),yB_P(n));
 end
 
 %% Step 2 (S2): A posteriori update/Measurement update step
@@ -374,54 +376,30 @@ function newHeading = newHeading(oldHeading, oldX, oldY, oldU, noiseV)
     
     % Upper wall:
     if (oldY >= L) && (oldU*sin(oldHeading) > 0)
-        if oldU*cos(oldHeading) > 0
-            bounce = oldHeading; % alpha angle
-            bounce = bounce*(1 + noiseV);
-            newHeading = -bounce;
-        else
-            bounce = pi - oldHeading;
-            bounce = bounce*(1 + noiseV);
-            newHeading = -pi + bounce;
-        end
+        bounce = oldHeading; % alpha angle
+        %bounce = bounce*(1 + noiseV);
+        newHeading = -bounce;
     end
     
     % Right wall:
     if (oldX >= L) && (oldU*cos(oldHeading) > 0)
-        if oldU*sin(oldHeading) > 0
-            bounce = 0.5*pi - oldHeading;
-            bounce = bounce*(1 + noiseV);
-            newHeading = 0.5*pi + bounce;
-        else
-            bounce = -(-0.5*pi - oldHeading);
-            bounce = bounce*(1 + noiseV);
-            newHeading = -0.5*pi - bounce;
-        end
+        bounce = 0.5*pi - oldHeading;
+        %bounce = bounce*(1 + noiseV);
+        newHeading = 0.5*pi + bounce;
     end
     
     % Lower wall:
     if (oldY <= 0) && (oldU*sin(oldHeading) < 0)
-        if oldU*cos(oldHeading) > 0
-            bounce = -oldHeading;
-            bounce = bounce*(1 + noiseV);
-            newHeading = bounce;
-        else
-            bounce = -(-pi - oldHeading);
-            bounce = bounce*(1 + noiseV);
-            newHeading = pi - bounce;
-        end
+        bounce = -oldHeading;
+        %bounce = bounce*(1 + noiseV);
+        newHeading = bounce;
     end
     
     % Left wall:
     if (oldX <= 0) && (oldU*cos(oldHeading) < 0)
-        if oldU*sin(oldHeading) > 0
-            bounce = oldHeading - 0.5*pi;
-            bounce = bounce*(1 + noiseV);
-            newHeading = 0.5*pi - bounce;
-        else
-            bounce = -(-pi - oldHeading);
-            bounce = bounce*(1 + noiseV);
-            newHeading = -0.5*pi + bounce;
-        end
+        bounce = oldHeading - 0.5*pi;
+        %bounce = bounce*(1 + noiseV);
+        newHeading = 0.5*pi - bounce;
     end    
 end
 
@@ -457,14 +435,14 @@ function [xValid, yValid] = shiftParticlesToValidBounds(xTest, yTest)
     xValid = xTest;
     yValid = yTest;
     if xTest < 0
-        xValid = 0;
-    elseif xTest >= L
-        xValid = L;
+        xValid = 0; % TODO: -xTest;
+    elseif xTest > L
+        xValid = L; % TODO: L - (xTest-L);
     end
     if yTest < 0
-        yValid = 0;
+        yValid = 0; % TODO: -yTest;
     elseif yTest > L
-        yValid = L;
+        yValid = L; % TODO: L - (yTest-L);
     end
 end
 

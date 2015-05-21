@@ -77,7 +77,8 @@ dt = KC.ts;
 
 %% Mode 1: Initialization
 % Set number of particles:
-N = 100; % obviously, you will need more particles than 10.
+N = 100; % obviously, you will need more particles than 10.    
+N_half = floor(N/2);
 if (init)
     % Initialization of estimator:
     % These particles are the posterior particles at discrete time k = 0
@@ -93,15 +94,14 @@ if (init)
     getRandomHeading = @(rowNum, startIndCol, endIndCol, offset) angle_RV(rowNum,startIndCol:endIndCol) + offset*ones(1,(endIndCol-startIndCol)+1);
     
     % A at sensors S_1 and B at sensor S_3
-    N_half = floor(N/2);
-    postParticles.x(:,1:N_half)  = repmat([L-eps; 0+eps],1,N_half);
-    postParticles.y(:,1:N_half)  = repmat([0+eps; L-eps],1,N_half);
+    postParticles.x(:,1:N_half)  = repmat([L; 0],1,N_half);
+    postParticles.y(:,1:N_half)  = repmat([0; L],1,N_half);
     % Draw a uniform RV to get initial headings theta_A, theta_B
     postParticles.h(:,1:N_half)  = [getRandomHeading(1,1,N_half,3*pi/4); getRandomHeading(2,1,N_half,-pi/4)];
     
     % A at sensors S_2 and B at sensor S_4
-    postParticles.x(:,(N_half+1):N)  = repmat([L-eps;0+eps],1,N-N_half);
-    postParticles.y(:,(N_half+1):N)  = repmat([L-eps;0+eps],1,N-N_half);
+    postParticles.x(:,(N_half+1):N)  = repmat([L;0],1,N-N_half);
+    postParticles.y(:,(N_half+1):N)  = repmat([L;0],1,N-N_half);
     % Draw a uniform RV to get initial headings theta_A, theta_B
     postParticles.h(:,(N_half+1):N)  = [getRandomHeading(1,N_half+1,N,-3*pi/4); getRandomHeading(2,N_half+1,N,pi/4)];
     
@@ -141,9 +141,6 @@ for n = 1:N
     %
     % Propagate N particles x_m through process dynamics, to get new
     % particles x_p
-    
-    [xA(n), yA(n)] = shiftParticlesToValidBounds(xA(n),yA(n));
-    [xB(n), yB(n)] = shiftParticlesToValidBounds(xB(n),yB(n));
 
     % TODO: Adapt newHeading function: Currently even at the beginning
     % there is a detected collision!
@@ -238,8 +235,95 @@ end
 % beta should have size 1 x N
 
 % TODO: row sum of f_zm_xp can be zero, which results in alpha = NaN
-alpha = 1./sum(f_zm_xp,2);
-beta = prod(diag(alpha)*f_zm_xp,1);
+
+alpha_test = 1./sum(f_zm_xp,2);
+validRows = (alpha_test ~= Inf);
+
+
+if sum(validRows) > 0
+    % At least one of the rows of f_zm_xp is non-zero
+    alpha = 1./sum(f_zm_xp(validRows,:),2);
+    beta = prod(diag(alpha)*f_zm_xp(validRows,:),1);
+else
+    
+    % All rows of f_zm_xp are zero
+    
+    % Use the sensor measurements to reassamble particles in regions
+    % meaningful for the sensor values
+    
+    unif = rand(4,N);
+    
+    hA_P = unif(2,:).*2*pi - pi*ones(1,N);
+    hB_P = unif(4,:).*2*pi - pi*ones(1,N);
+    if (sens(1) > L/2) && (sens(2) > L/2)
+        % The "measurement circles" of the two sensors intercept 
+        yA = (sens(1)^2-sens(2)^2+L^2)/(2*L);
+        
+        xA1 = (2*L+sqrt(4*L^2-4*(L^2+yA^2-sens(1)^2)))/2;
+        xA2 = (2*L+sqrt(4*L^2-4*(L^2+yA^2-sens(1)^2)))/2;
+        
+        if (xA1 >= 0)
+            xA = xA1;
+        elseif (xA2 >= 0)
+            xA = xA2;
+        else
+            error('The triangulation failed. Invalid use of formula.');
+        end
+        
+        xA_P = xA*ones(1,N);
+        yA_P = yA*ones(1,N);        
+    else
+        % The "measurement circles" do not intercept
+        % Assemble half of the particles around quarter-circle of sensor 3
+        % and the others around quarter-circle of sensor 4
+        
+        % First half of particles around sensor 1
+        angle = pi/2*unif+pi/2;
+        xA_P(1:N_half) = sens(1).*cos(angle(1,1:N_half)) + L*ones(1,N_half);
+        yA_P(1:N_half) = sens(1).*sin(angle(1,1:N_half));
+        
+        % Second half of particles around sensor 2
+        angle = pi/2*unif+pi;
+        xA_P(N_half+1:N) = sens(2).*cos(angle(1,N_half+1:N)) + L*ones(1,N_half);
+        yA_P(N_half+1:N) = sens(2).*sin(angle(1,N_half+1:N)) + L*ones(1,N_half);
+    end
+    
+    if (sens(3) > L/2) && (sens(4) > L/2)
+        % The "measurement circles" of the two sensors intercept
+        yA = (sens(4)^2-sens(3)^2+L^2)/(2*L);
+        
+        xA1 = sqrt(-4*(yA^2-sens(4)^2))/2;
+        xA2 = -sqrt(-4*(yA^2-sens(4)^2))/2;
+        
+        if (xA1 >= 0)
+            xA = xA1;
+        elseif (xA2 >= 0)
+            xA = xA2;
+        else
+            error('The triangulation failed. Invalid use of formula.');
+        end
+        
+        xA_P = xA*ones(1,N);
+        yA_P = yA*ones(1,N); 
+    else
+        % The "measurement circles" do not intercept
+        % Assemble half of the particles around quarter-circle of sensor 3
+        % and the others around quarter-circle of sensor 4
+        
+        % First half of particles around sensor 3
+        angle = pi/2*unif+3*pi/2;
+        xA_P(1:N_half) = sens(3).*cos(angle(2,1:N_half));
+        yA_P(1:N_half) = sens(3).*sin(angle(2,1:N_half)) + L*ones(1,N_half);
+        
+        % Second half of particles around sensor 4
+        angle = pi/2*unif;
+        xA_P(N_half+1:N) = sens(4).*cos(angle(2,N_half+1:N));
+        yA_P(N_half+1:N) = sens(4).*sin(angle(2,N_half+1:N));
+    end
+
+    beta = 1/N*ones(1,N);
+end
+
 
 % Resampling
 % ---------------------------------
@@ -259,13 +343,13 @@ for n = 1:N
     % Pick particle n_bar, such that:
     % sum(beta_n,n,1,n_bar) >= r_n and
     % sum(beta_n,n,1,n_bar-1) < r_n
-    for k = 1:6
+    for vecId = 1:6
         for ind = 1:N
-            if (accumSum(k) < r(k)) && ((accumSum(k) + beta(ind)) >= r(k))
-                n_bar(k) = ind;
+            if (accumSum(vecId) < r(vecId)) && ((accumSum(vecId) + beta(ind)) >= r(vecId))
+                n_bar(vecId) = ind;
                 break;
             else
-                accumSum(k) = accumSum(k) + beta(ind);
+                accumSum(vecId) = accumSum(vecId) + beta(ind);
             end
         end
     end
@@ -281,36 +365,15 @@ end % for...n
 
 % Sample Impoverishment: Roughening
 % ----------------------------------
-% Perturb the particles after resampling
-
-
-perturb = 0.01;
-
-[xA_M, yA_M, hA_M, xB_M, yB_M, hB_M] = performRoughening(xA_M, yA_M, hA_M, xB_M, yB_M, hB_M, 100);
-
-
-% xA_M = xA_M + perturb*(rand(N,1)-0.5*ones(N,1));
-% yA_M(:) = yA_M + perturb*(rand(N,1)-0.5*ones(N,1));
-% hA_M(:) = hA_M + perturb*(rand(N,1)-0.5*ones(N,1));
-% 
-% xB_M(:) = xB_M + perturb*(rand(N,1)-0.5*ones(N,1));
-% yB_M(:) = yB_M + perturb*(rand(N,1)-0.5*ones(N,1));
-% hB_M(:) = hB_M + perturb*(rand(N,1)-0.5*ones(N,1));
-
-% Assign to new variables
-postParticles.x(1,n) = xA_M(n);
-postParticles.y(1,n) = yA_M(n);
-postParticles.h(1,n) = hA_M(n);
-
-postParticles.x(2,n) = xB_M(n);
-postParticles.y(2,n) = yB_M(n);
-postParticles.h(2,n) = hB_M(n);
+% Perturb the particles after resampling and assign to new variables
+[postParticles.x(1,:), postParticles.y(1,:), postParticles.h(1,:), ...
+ postParticles.x(2,:), postParticles.y(2,:), postParticles.h(2,:)] = performRoughening(xA_M, yA_M, hA_M, xB_M, yB_M, hB_M, 100);
 
 function newHeading = newHeading(oldHeading, oldX, oldY, oldU, noiseV)
     newHeading = oldHeading;
     
     % Upper wall:
-    if (oldY == L) && (oldU*sin(oldHeading) > 0)
+    if (oldY >= L) && (oldU*sin(oldHeading) > 0)
         if oldU*cos(oldHeading) > 0
             bounce = oldHeading; % alpha angle
             bounce = bounce*(1 + noiseV);
@@ -323,7 +386,7 @@ function newHeading = newHeading(oldHeading, oldX, oldY, oldU, noiseV)
     end
     
     % Right wall:
-    if (oldX == L) && (oldU*cos(oldHeading) > 0)
+    if (oldX >= L) && (oldU*cos(oldHeading) > 0)
         if oldU*sin(oldHeading) > 0
             bounce = 0.5*pi - oldHeading;
             bounce = bounce*(1 + noiseV);
@@ -336,7 +399,7 @@ function newHeading = newHeading(oldHeading, oldX, oldY, oldU, noiseV)
     end
     
     % Lower wall:
-    if (oldY == 0) && (oldU*sin(oldHeading) < 0)
+    if (oldY <= 0) && (oldU*sin(oldHeading) < 0)
         if oldU*cos(oldHeading) > 0
             bounce = -oldHeading;
             bounce = bounce*(1 + noiseV);
@@ -349,7 +412,7 @@ function newHeading = newHeading(oldHeading, oldX, oldY, oldU, noiseV)
     end
     
     % Left wall:
-    if (oldX == 0) && (oldU*cos(oldHeading) < 0)
+    if (oldX <= 0) && (oldU*cos(oldHeading) < 0)
         if oldU*sin(oldHeading) > 0
             bounce = oldHeading - 0.5*pi;
             bounce = bounce*(1 + noiseV);
@@ -420,9 +483,10 @@ function [xA_r, yA_r, hA_r, xB_r, yB_r, hB_r] = performRoughening(xA, yA, hA, xB
     mu = zeros(6,N);
     sigma = diag(K.*E_i.*N_1_d)*ones(6,N);
     
-    perturb = normrnd(mu,sigma,6,N)
+    perturb = normrnd(mu,sigma,6,N);
     
     completeMatrix = completeMatrix + perturb;
+    
     xA_r = completeMatrix(1,:); yA_r = completeMatrix(2,:); hA_r = completeMatrix(3,:);
     xB_r = completeMatrix(4,:); yB_r = completeMatrix(5,:); hB_r = completeMatrix(6,:);
 end

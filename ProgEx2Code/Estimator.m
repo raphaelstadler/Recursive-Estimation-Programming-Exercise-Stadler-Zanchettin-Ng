@@ -180,6 +180,9 @@ end
 xA_P_mean = mean(xA_P); yA_P_mean = mean(yA_P);
 xB_P_mean = mean(xB_P); yB_P_mean = mean(yB_P);
 
+% Store which sensor values are meaningful
+validRowsSensors = find(sens ~= Inf);
+
 % Substitute missing measurements for robot A
 if sens(1) == Inf && sens(2) == Inf
     sens(1) = sqrt((xA_P_mean - L)^2 + yA_P_mean^2);
@@ -242,18 +245,41 @@ end
 % TODO: row sum of f_zm_xp can be zero, which results in alpha = NaN
 
 alpha_test = 1./sum(f_zm_xp,2);
-validRows = find(alpha_test ~= Inf & ~isnan(alpha_test));
+validRowsProbab = find(alpha_test ~= Inf & ~isnan(alpha_test));
 
-beta = zeros(1,N);
+validRows = intersect(validRowsSensors, validRowsProbab);
+
+beta = zeros(2,N);
+alpha = ones(2,1);
+
+validRowsA = intersect([1;2],validRows);
+validRowsB = intersect([3;4],validRows);
+
 if ~isempty(validRows)
     % At least one of the rows of f_zm_xp is non-zero
-    alpha = 1./sum(f_zm_xp(validRows,:),2);
-    beta = prod(diag(alpha)*f_zm_xp(validRows,:),1);
+    if ~isempty(validRowsA)
+        alpha1 = 1./sum(f_zm_xp(validRowsA,:),2);
+        beta(1,:) = prod(diag(alpha1)*f_zm_xp(validRowsA,:),1);
+        if(sum(beta(1,:) > 0))
+            beta(1,:) = beta(1,:)/sum(beta(1,:));
+        else
+            validRows = intersect([1 2 3 4]', [3 4]); % Remove 1, 2
+            validRowsA = [];
+        end
+    end
+    if ~isempty(validRowsB)
+        alpha2 = 1./sum(f_zm_xp(validRowsB,:),2);
+        beta(2,:) = prod(diag(alpha2)*f_zm_xp(validRowsB,:),1);
+        if(sum(beta(2,:) > 0))
+            beta(2,:) = beta(2,:)/sum(beta(2,:));
+        else
+            validRows = intersect([1 2 3 4]', [1 2]); % Remove 1, 2
+            validRowsB = [];
+        end
+    end
 end
 
-if(sum(beta) > 0)
-    beta = beta/sum(beta);
-else
+if isempty(validRowsA) || isempty(validRowsB)
     % All rows of f_zm_xp are zero
     
     % Use the sensor measurements to reassamble particles in regions
@@ -261,62 +287,69 @@ else
     unif = rand(4,N);
     
     hA_P = unif(2,:).*2*pi - pi*ones(1,N);
-    hB_P = unif(4,:).*2*pi - pi*ones(1,N);
-    if (sens(1) >= L/2) && (sens(2) >= L/2)
-        % The "measurement circles" of the two sensors intercept 
-        yA = (sens(1)^2-sens(2)^2+L^2)/(2*L);
-        
-        xA1 = (2*L+sqrt(4*L^2-4*(L^2+yA^2-sens(1)^2)))/2;
-        xA2 = (2*L-sqrt(4*L^2-4*(L^2+yA^2-sens(1)^2)))/2;
-        
-        if (xA1 >= 0)
-            xA = xA1;
-        elseif (xA2 >= 0)
-            xA = xA2;
-        else
-            error('The triangulation failed. Invalid use of formula.');
-        end
-        
-        xA_P = xA*ones(1,N);
-        yA_P = yA*ones(1,N);        
-    else
-        % The "measurement circles" do not intercept
-        % Assemble half of the particles around quarter-circle of sensor 3
-        % and the others around quarter-circle of sensor 4
-        
-        % First half of particles around sensor 1
-        angle = pi/2*unif+pi/2;
-        xA_P(1:N_half) = sens(1).*cos(angle(1,1:N_half)) + L*ones(1,N_half);
-        yA_P(1:N_half) = sens(1).*sin(angle(1,1:N_half));
-        
-        % Second half of particles around sensor 2
-        angle = pi/2*unif+pi;
-        xA_P(N_half+1:N) = sens(2).*cos(angle(1,N_half+1:N)) + L*ones(1,N_half);
-        yA_P(N_half+1:N) = sens(2).*sin(angle(1,N_half+1:N)) + L*ones(1,N_half);
-    end
-    
-    if (sens(3) >= L/2) && (sens(4) >= L/2)
-        % The "measurement circles" of the two sensors intercept
-        yB = (sens(4)^2-sens(3)^2+L^2)/(2*L);
-        xB = sqrt(sens(4)^2-yB);
+    if isempty(validRowsA)
 
-        xB_P = xB*ones(1,N);
-        yB_P = yB*ones(1,N); 
-    else
-        % The "measurement circles" do not intercept
-        % Assemble half of the particles around quarter-circle of sensor 3
-        % and the others around quarter-circle of sensor 4
-        
-        % First half of particles around sensor 3
-        angle = pi/2*unif+3*pi/2;
-        xA_P(1:N_half) = sens(3).*cos(angle(2,1:N_half));
-        yA_P(1:N_half) = sens(3).*sin(angle(2,1:N_half)) + L*ones(1,N_half);
-        
-        % Second half of particles around sensor 4
-        angle = pi/2*unif;
-        xA_P(N_half+1:N) = sens(4).*cos(angle(2,N_half+1:N));
-        yA_P(N_half+1:N) = sens(4).*sin(angle(2,N_half+1:N));
-    end
+        if (sens(1) >= L/2) && (sens(2) >= L/2)
+            % The "measurement circles" of the two sensors intercept 
+            yA = (sens(1)^2-sens(2)^2+L^2)/(2*L);
+
+            xA1 = (2*L+sqrt(4*L^2-4*(L^2+yA^2-sens(1)^2)))/2;
+            xA2 = (2*L-sqrt(4*L^2-4*(L^2+yA^2-sens(1)^2)))/2;
+
+            if (xA1 >= 0)
+                xA = xA1;
+            elseif (xA2 >= 0)
+                xA = xA2;
+            else
+                error('The triangulation failed. Invalid use of formula.');
+            end
+
+            xA_P = xA*ones(1,N);
+            yA_P = yA*ones(1,N);        
+        else
+            % The "measurement circles" do not intercept
+            % Assemble half of the particles around quarter-circle of sensor 3
+            % and the others around quarter-circle of sensor 4
+
+            % First half of particles around sensor 1
+            angle = pi/2*unif+pi/2;
+            xA_P(1:N_half) = sens(1).*cos(angle(1,1:N_half)) + L*ones(1,N_half);
+            yA_P(1:N_half) = sens(1).*sin(angle(1,1:N_half));
+
+            % Second half of particles around sensor 2
+            angle = pi/2*unif+pi;
+            xA_P(N_half+1:N) = sens(2).*cos(angle(1,N_half+1:N)) + L*ones(1,N_half);
+            yA_P(N_half+1:N) = sens(2).*sin(angle(1,N_half+1:N)) + L*ones(1,N_half);
+        end
+        beta(1,:) = 1/N*ones(1,N);
+    end % validRowsA
+    
+    if isempty(validRowsB)
+        hB_P = unif(4,:).*2*pi - pi*ones(1,N);
+        if (sens(3) >= L/2) && (sens(4) >= L/2)
+            % The "measurement circles" of the two sensors intercept
+            yB = (sens(4)^2-sens(3)^2+L^2)/(2*L);
+            xB = sqrt(sens(4)^2-yB);
+
+            xB_P = xB*ones(1,N);
+            yB_P = yB*ones(1,N); 
+        else
+            % The "measurement circles" do not intercept
+            % Assemble half of the particles around quarter-circle of sensor 3
+            % and the others around quarter-circle of sensor 4
+
+            % First half of particles around sensor 3
+            angle = pi/2*unif+3*pi/2;
+            xA_P(1:N_half) = sens(3).*cos(angle(2,1:N_half));
+            yA_P(1:N_half) = sens(3).*sin(angle(2,1:N_half)) + L*ones(1,N_half);
+
+            % Second half of particles around sensor 4
+            angle = pi/2*unif;
+            xA_P(N_half+1:N) = sens(4).*cos(angle(2,N_half+1:N));
+            yA_P(N_half+1:N) = sens(4).*sin(angle(2,N_half+1:N));
+        end
+        beta(2,:) = 1/N*ones(1,N);
+    end % validRowsB
 
     % Put KC.sbar percent of the particles xA to xB and
     % KC.sbar percent of the particles from xB to xA
@@ -328,8 +361,6 @@ else
 
     xB_P(permutedInd(N-deltaInd:N)) = xA_P(permutedInd(N-deltaInd:N));
     yB_P(permutedInd(N-deltaInd:N)) = yA_P(permutedInd(N-deltaInd:N));
-    
-    beta = 1/N*ones(1,N);
 end
 
 % Resampling
@@ -339,21 +370,24 @@ xA_M = zeros(N,1); yA_M = zeros(N,1); hA_M = zeros(N,1);
 xB_M = zeros(N,1); yB_M = zeros(N,1); hB_M = zeros(N,1);
 
 % build cumulative sum of particle measurement likelihood
-cumulativeSum = cumsum(beta);
+cumulativeSum = cumsum(beta,2); % 2 x N
+
+n_bar = zeros(2,1);
 
 % Draw N uniform samples r and choose subset of xA_P according to
 % cumulative pdf of beta
 for i = 1:N
-    r = rand;
-    n_bar = find(cumulativeSum >= r,1,'first');
+    r = rand(2,1);
+    n_bar(1) = find(cumulativeSum(1,:) >= r(1),1,'first');
+    n_bar(2) = find(cumulativeSum(2,:) >= r(2),1,'first');
 
-    xA_M(i,1) = xA_P(n_bar);
-    yA_M(i,1) = yA_P(n_bar);
-    hA_M(i,1) = hA_P(n_bar);
+    xA_M(i,1) = xA_P(n_bar(1));
+    yA_M(i,1) = yA_P(n_bar(1));
+    hA_M(i,1) = hA_P(n_bar(1));
 
-    xB_M(i,1) = xB_P(n_bar);
-    yB_M(i,1) = yB_P(n_bar);
-    hB_M(i,1) = hB_P(n_bar); 
+    xB_M(i,1) = xB_P(n_bar(2));
+    yB_M(i,1) = yB_P(n_bar(2));
+    hB_M(i,1) = hB_P(n_bar(2)); 
 end
 
 % Sample Impoverishment: Roughening

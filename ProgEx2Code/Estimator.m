@@ -151,17 +151,17 @@ yB_P = yB + dt*(uB*sin(hB));
 
 %% Step 2 (S2): A posteriori update/Measurement update step
 
-if true % Uncomment this, to skip measurement update completely
-%if sens == Inf*ones(size(sens))
+% if true % Uncomment this, to skip measurement update completely
+if sens == Inf*ones(size(sens))
     % No sensor measurements available:
     % Completely skip measurement update step   
-    postParticles.x(1,:) = xA_P(:);
-    postParticles.y(1,:) = yA_P(:);
-    postParticles.h(1,:) = hA_P(:);
+    postParticles.x(1,:) = xA_P;
+    postParticles.y(1,:) = yA_P;
+    postParticles.h(1,:) = hA_P;
 
-    postParticles.x(2,:) = xB_P(:);
-    postParticles.y(2,:) = yB_P(:);
-    postParticles.h(2,:) = hB_P(:);
+    postParticles.x(2,:) = xB_P;
+    postParticles.y(2,:) = yB_P;
+    postParticles.h(2,:) = hB_P;
     return;
 end
 
@@ -199,29 +199,29 @@ end
 z_noiseFree_correctRobot = zeros(4,N); z_noiseFree_wrongRobot = zeros(4,N);
 f_zm_xp = zeros(4,N);
 
-% TODO: Get rid of for...
-for n = 1:N
-    % For all particles
-    z_noiseFree_correctRobot(1,n)   = sqrt((xA_P(n) - L)^2 + yA_P(n)^2);        % s(1,n) is 1: measure robot A
-    z_noiseFree_wrongRobot(1,n)     = sqrt((xB_P(n) - L)^2 + yB_P(n)^2);        % s(1,n) is 0: measure robot B
-    
-    z_noiseFree_correctRobot(2,n)   = sqrt((xA_P(n) - L)^2 + (yA_P(n) - L)^2);  % s(2,n) is 1: measure robot A
-    z_noiseFree_wrongRobot(2,n)     = sqrt((xB_P(n) - L)^2 + (yB_P(n) - L)^2);  % s(2,n) is 0: measure robot B
-    
-    z_noiseFree_correctRobot(3,n)   = sqrt(xB_P(n)^2 + (yB_P(n) - L)^2);        % s(3,n) is 1: measure robot B
-    z_noiseFree_wrongRobot(3,n)     = sqrt(xA_P(n)^2 + (yA_P(n) - L)^2);        % s(3,n) is 0: measure robot A
-    
-    z_noiseFree_correctRobot(4,n)   = sqrt(xB_P(n)^2 + yB_P(n)^2);              % s(1,n) is 1: measure robot B
-    z_noiseFree_wrongRobot(4,n)     = sqrt(xA_P(n)^2 + yA_P(n)^2);              % s(1,n) is 0: measure robot A   
+% For all particles
+z_noiseFree_correctRobot(1,:)   = sqrt((xA_P - L).^2 + yA_P.^2);        % s(1,:) is 1: measure robot A
+z_noiseFree_wrongRobot(1,:)     = sqrt((xB_P - L).^2 + yB_P.^2);        % s(1,:) is 0: measure robot B
 
-    for sensId = 1:4
-        % Measurment likelihood: 4 x N
-        % Using actual measurements sens(:)
-        % Note, that in the case where not all sensor measurements were
-        % available, sens(.) contains another meaningful value.
-        f_zm_xp(sensId,n) = GetProbabilityOutOfTriangularPDF(z_noiseFree_correctRobot(sensId,n),sens(sensId)).*(1-KC.sbar) + ...
-                            GetProbabilityOutOfTriangularPDF(z_noiseFree_wrongRobot(sensId,n),sens(sensId)).*KC.sbar;
-    end
+z_noiseFree_correctRobot(2,:)   = sqrt((xA_P - L).^2 + (yA_P - L).^2);  % s(2,:) is 1: measure robot A
+z_noiseFree_wrongRobot(2,:)     = sqrt((xB_P - L).^2 + (yB_P - L).^2);  % s(2,:) is 0: measure robot B
+
+z_noiseFree_correctRobot(3,:)   = sqrt(xB_P.^2 + (yB_P - L).^2);        % s(3,:) is 1: measure robot B
+z_noiseFree_wrongRobot(3,:)     = sqrt(xA_P.^2 + (yA_P - L).^2);        % s(3,:) is 0: measure robot A
+
+z_noiseFree_correctRobot(4,:)   = sqrt(xB_P.^2 + yB_P.^2);              % s(1,:) is 1: measure robot B
+z_noiseFree_wrongRobot(4,:)     = sqrt(xA_P.^2 + yA_P.^2);              % s(1,:) is 0: measure robot A   
+
+% TODO: Get rid of for...
+%for n = 1:N
+
+for sensId = 1:4
+    % Measurment likelihood: 4 x N
+    % Using actual measurements sens
+    % Note, that in the case where not all sensor measurements were
+    % available, sens(.) contains another meaningful value.
+    f_zm_xp(sensId,:) = GetProbabilityOutOfTriangularPDF(z_noiseFree_correctRobot(sensId,:),sens(sensId)).*(1-KC.sbar) + ...
+                        GetProbabilityOutOfTriangularPDF(z_noiseFree_wrongRobot(sensId,:),sens(sensId)).*KC.sbar;
 end
 
 % Calculate normalization constants alphas - size(alpha): 4 x 1
@@ -421,15 +421,21 @@ function newHeading = newHeading(oldHeading, oldX, oldY, oldU, noiseV)
 end
 
 function probab = GetProbabilityOutOfTriangularPDF(centerOfPDF,evaluationPoint)
-    probab = 0;
-    if evaluationPoint >= (centerOfPDF - KC.wbar) && ...
-       evaluationPoint < centerOfPDF
+    % Note: Function is designed to handle vector valued centerOfPDF, and scalar evaluationPoint
+    probab = zeros(size(centerOfPDF));
+    
+    linearIncrInd = find(evaluationPoint >= (centerOfPDF - KC.wbar) & ...
+                         evaluationPoint < centerOfPDF);
+    if ~isempty(linearIncrInd)
         % linear INCREASING
-        probab = 1/(KC.wbar^2)*(evaluationPoint-centerOfPDF)+1/KC.wbar;
-    elseif evaluationPoint >= centerOfPDF && ...
-       evaluationPoint <= (centerOfPDF + KC.wbar)
+        probab(linearIncrInd) = 1/(KC.wbar^2)*(evaluationPoint-centerOfPDF(linearIncrInd))+1./KC.wbar;
+    end
+    
+    linearDecrInd = find(evaluationPoint >= centerOfPDF & ...
+                         evaluationPoint <= (centerOfPDF + KC.wbar));
+    if ~isempty(linearDecrInd)
         % linear DECREASING
-        probab = -1/(KC.wbar^2)*(evaluationPoint-centerOfPDF)+1/KC.wbar;
+        probab(linearDecrInd) = -1/(KC.wbar^2)*(evaluationPoint-centerOfPDF(linearDecrInd))+1./KC.wbar;
     end
 end
 

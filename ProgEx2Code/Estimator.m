@@ -126,45 +126,33 @@ hB = prevPostParticles.h(2,:);
 
 uA = act(1); uB = act(2);
 
-vA = drawQuadraticRVSample([N,1]); % draw noise from quadratic pdf for post-bounce angles
-vB = drawQuadraticRVSample([N,1]);
+vA = drawQuadraticRVSample([1, N]); % draw noise from quadratic pdf for post-bounce angles
+vB = drawQuadraticRVSample([1, N]);
 
 % Initialize variables which will be assigned after prior update
 xA_P = xA; yA_P = yA; hA_P = hA;
 xB_P = xB; yB_P = yB; hB_P = hB;
 
-% TODO: Optimize newHeading(.) function to be able to treat a vector as a
-% whole
+% DYNAMIC OF THE SYSTEM: Process Equation
+%
+% Propagate N particles x_m through process dynamics, to get new
+% particles x_p
+hA_P = newHeading(hA,xA,yA,uA,vA); % new hA needs old xA and old yA, so update hA first
+hB_P = newHeading(hB,xB,yB,uB,vB); % new hB needs old xB and old yB, so update hB first
 
-% Apply the process equation to the particles
-for n = 1:N
-    % DYNAMIC OF THE SYSTEM: Process Equation
-    %
-    % Propagate N particles x_m through process dynamics, to get new
-    % particles x_p
+[xA, yA] = shiftParticlesToValidBounds(xA,yA);
+[xB, yB] = shiftParticlesToValidBounds(xB,yB);
 
-    % TODO: Adapt newHeading function: Currently even at the beginning
-    % there is a detected collision!
-    hA_P(n) = newHeading(hA(n),xA(n),yA(n),uA,vA(n)); % new hA needs old xA and old yA, so update hA first
-    hB_P(n) = newHeading(hB(n),xB(n),yB(n),uB,vB(n)); % new hB needs old xB and old yB, so update hB first
-    
-    [xA(n), yA(n)] = shiftParticlesToValidBounds(xA(n),yA(n));
-    [xB(n), yB(n)] = shiftParticlesToValidBounds(xB(n),yB(n));
-    
-    xA_P(n) = xA(n) + dt*(uA*cos(hA(n)));
-    yA_P(n) = yA(n) + dt*(uA*sin(hA(n)));
-    
-    xB_P(n) = xB(n) + dt*(uB*cos(hB(n)));
-    yB_P(n) = yB(n) + dt*(uB*sin(hB(n)));
-    
-    [xA(n), yA(n)] = shiftParticlesToValidBounds(xA(n),yA(n));
-    [xB(n), yB(n)] = shiftParticlesToValidBounds(xB(n),yB(n));
-end
+xA_P = xA + dt*(uA*cos(hA));
+yA_P = yA + dt*(uA*sin(hA));
+
+xB_P = xB + dt*(uB*cos(hB));
+yB_P = yB + dt*(uB*sin(hB));
 
 %% Step 2 (S2): A posteriori update/Measurement update step
 
-% if true % Uncomment this, to skip measurement update completely
-if sens == Inf*ones(size(sens))
+if true % Uncomment this, to skip measurement update completely
+%if sens == Inf*ones(size(sens))
     % No sensor measurements available:
     % Completely skip measurement update step   
     postParticles.x(1,:) = xA_P(:);
@@ -400,31 +388,35 @@ function newHeading = newHeading(oldHeading, oldX, oldY, oldU, noiseV)
     newHeading = oldHeading;
     
     % Upper wall:
-    if (oldY >= L) && (oldU*sin(oldHeading) > 0)
-        bounce = oldHeading; % alpha angle
-        bounce = bounce*(1 + noiseV);
-        newHeading = -bounce;
+    upperWallCollInd = intersect(find(oldY >= L), find(oldU*sin(oldHeading) > 0));
+    if true %if ~isempty(upperWallCollInd)
+        bounce = oldHeading(upperWallCollInd); % alpha angle
+        bounce = bounce.*(ones(size(bounce)) + noiseV(upperWallCollInd));
+        newHeading(upperWallCollInd) = -bounce;
     end
     
     % Right wall:
-    if (oldX >= L) && (oldU*cos(oldHeading) > 0)
-        bounce = 0.5*pi - oldHeading;
-        bounce = bounce*(1 + noiseV);
-        newHeading = 0.5*pi + bounce;
+    rightWallCollInd = intersect(find(oldX >= L), find(oldU*cos(oldHeading) > 0));
+    if ~isempty(rightWallCollInd)
+        bounce = 0.5*pi*ones(size(oldHeading(rightWallCollInd))) - oldHeading(rightWallCollInd);
+        bounce = bounce.*(ones(size(bounce)) + noiseV(rightWallCollInd));
+        newHeading(rightWallCollInd) = 0.5*pi*ones(size(bounce)) + bounce;
     end
     
     % Lower wall:
-    if (oldY <= 0) && (oldU*sin(oldHeading) < 0)
-        bounce = -oldHeading;
-        bounce = bounce*(1 + noiseV);
-        newHeading = bounce;
+    lowerWallCollInd = intersect(find(oldY <= 0), find(oldU*sin(oldHeading) < 0));
+    if ~isempty(lowerWallCollInd)
+        bounce = -oldHeading(lowerWallCollInd);
+        bounce = bounce.*(ones(size(bounce)) + noiseV(lowerWallCollInd));
+        newHeading(lowerWallCollInd) = bounce;
     end
     
     % Left wall:
-    if (oldX <= 0) && (oldU*cos(oldHeading) < 0)
-        bounce = oldHeading - 0.5*pi;
-        bounce = bounce*(1 + noiseV);
-        newHeading = 0.5*pi - bounce;
+    leftWallCollInd = intersect(find(oldX <= 0), find(oldU*cos(oldHeading) < 0));
+    if ~isempty(leftWallCollInd)
+        bounce = oldHeading(leftWallCollInd) - 0.5*pi*ones(size(oldHeading(leftWallCollInd)));
+        bounce = bounce.*(ones(size(bounce)) + noiseV(leftWallCollInd));
+        newHeading(leftWallCollInd) = 0.5*pi*ones(size(bounce)) - bounce;
     end    
 end
 
@@ -458,16 +450,12 @@ end
 function [xValid, yValid] = shiftParticlesToValidBounds(xTest, yTest)
     xValid = xTest;
     yValid = yTest;
-    if xTest < 0
-        xValid = -xTest;
-    elseif xTest > L
-        xValid = L - (xTest-L);
-    end
-    if yTest < 0
-        yValid = -yTest;
-    elseif yTest > L
-        yValid = L - (yTest-L);
-    end
+    
+    xValid(xTest < 0) = -xTest(xTest < 0);
+    xValid(xTest > L) = L *ones(size(xTest(xTest > L))) - ( xTest(xTest > L) - L*ones(size(xTest(xTest > L))) );
+    
+    yValid(yTest < 0) = -yTest(yTest < 0);
+    yValid(yTest > L) = L *ones(size(yTest(yTest > L))) - ( yTest(yTest > L) - L*ones(size(yTest(yTest > L))) );
 end
 
 function [xA_r, yA_r, hA_r, xB_r, yB_r, hB_r] = performRoughening(xA, yA, hA, xB, yB, hB)    

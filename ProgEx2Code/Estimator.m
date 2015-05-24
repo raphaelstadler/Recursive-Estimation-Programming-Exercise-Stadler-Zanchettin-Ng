@@ -165,31 +165,10 @@ if sens == Inf*ones(size(sens))
     return;
 end
 
-xA_P_mean = mean(xA_P); yA_P_mean = mean(yA_P);
-xB_P_mean = mean(xB_P); yB_P_mean = mean(yB_P);
-
 % Store which sensor values are meaningful
 validRowsSensors = find(sens ~= Inf);
-
-% Substitute missing measurements for robot A
-if sens(1) == Inf && sens(2) == Inf
-    sens(1) = sqrt((xA_P_mean - L)^2 + yA_P_mean^2);
-    sens(2) = sqrt((xA_P_mean - L)^2 + (yA_P_mean - L)^2);
-elseif sens(1) == Inf && sens(2) ~= Inf
-    sens(1) = sqrt((xA_P_mean - L)^2 + yA_P_mean^2);
-elseif sens(1) ~= Inf && sens(2) == Inf
-    sens(2) = sqrt((xA_P_mean - L)^2 + (yA_P_mean - L)^2);
-end
-
-% Substitute missing measurements for robot B
-if sens(3) == Inf && sens(4) == Inf
-    sens(3) = sqrt(xB_P_mean^2 + (yB_P_mean - L)^2);
-    sens(4) = sqrt(xB_P_mean^2 + yB_P_mean^2);
-elseif sens(3) ~= Inf && sens(4) == Inf
-    sens(3) = sqrt(xB_P_mean^2 + (yB_P_mean - L)^2);
-elseif sens(3) == Inf && sens(4) ~= Inf
-    sens(4) = sqrt(xB_P_mean^2 + yB_P_mean^2);
-end
+validRowsSensorA = intersect([1;2],validRowsSensors);
+validRowsSensorB = intersect([3;4],validRowsSensors);
 
 % Noise-free measurement: 
 % Apply measurement equation to particles and calculate which measurement you would expect.
@@ -212,9 +191,6 @@ z_noiseFree_wrongRobot(3,:)     = sqrt(xA_P.^2 + (yA_P - L).^2);        % s(3,:)
 z_noiseFree_correctRobot(4,:)   = sqrt(xB_P.^2 + yB_P.^2);              % s(1,:) is 1: measure robot B
 z_noiseFree_wrongRobot(4,:)     = sqrt(xA_P.^2 + yA_P.^2);              % s(1,:) is 0: measure robot A   
 
-% TODO: Get rid of for...
-%for n = 1:N
-
 for sensId = 1:4
     % Measurment likelihood: 4 x N
     % Using actual measurements sens
@@ -230,127 +206,197 @@ end
 % Calculate measurement likelihood beta which will be used to represent f_xM lateron
 % beta should have size 1 x N
 
-% TODO: row sum of f_zm_xp can be zero, which results in alpha = NaN
-
+% Note: Row sum of f_zm_xp can be zero, which results in alpha = NaN
 alpha_test = 1./sum(f_zm_xp,2);
 validRowsProbab = find(alpha_test ~= Inf & ~isnan(alpha_test));
+sumNotEqualsZero = find(sum(f_zm_xp, 2) > 0);
+validRowsProbab = intersect(validRowsProbab, sumNotEqualsZero);
 
-validRows = intersect(validRowsSensors, validRowsProbab);
+validRowsProbabA = intersect([1;2],validRowsProbab);
+validRowsProbabB = intersect([3;4],validRowsProbab);
 
-beta = zeros(2,N);
-alpha = ones(2,1);
+alpha1 = 1./sum(f_zm_xp(validRowsProbabA,:),2);
+beta(1,:) = prod(diag(alpha1)*f_zm_xp(validRowsProbabA,:),1);
+alpha2 = 1./sum(f_zm_xp(validRowsProbabB,:),2);
+beta(2,:) = prod(diag(alpha2)*f_zm_xp(validRowsProbabB,:),1);
 
-validRowsA = intersect([1;2],validRows);
-validRowsB = intersect([3;4],validRows);
+betaNotEqualsZero = find(sum(beta, 2) > 0);
 
-if ~isempty(validRows)
-    % At least one of the rows of f_zm_xp is non-zero
-    if ~isempty(validRowsA)
-        alpha1 = 1./sum(f_zm_xp(validRowsA,:),2);
-        beta(1,:) = prod(diag(alpha1)*f_zm_xp(validRowsA,:),1);
-        if(sum(beta(1,:) > 0))
-            beta(1,:) = beta(1,:)/sum(beta(1,:));
-        else
-            validRows = intersect([1 2 3 4]', [3 4]); % Remove 1, 2
-            validRowsA = [];
-        end
-    end
-    if ~isempty(validRowsB)
-        alpha2 = 1./sum(f_zm_xp(validRowsB,:),2);
-        beta(2,:) = prod(diag(alpha2)*f_zm_xp(validRowsB,:),1);
-        if(sum(beta(2,:) > 0))
-            beta(2,:) = beta(2,:)/sum(beta(2,:));
-        else
-            validRows = intersect([1 2 3 4]', [1 2]); % Remove 1, 2
-            validRowsB = [];
-        end
-    end
+if (~intersect(1, betaNotEqualsZero)) % beta(1,:) is not > 0
+    validRowsProbab = intersect(validRowsProbab, [3;4]);
+else
+    beta(1,:) = beta(1,:)/sum(beta(1,:));
+end
+if (~intersect(2, betaNotEqualsZero)) % beta(2,:) is not > 0
+    validRowsProbab = intersect(validRowsProbab, [1;2]);
+else
+    beta(2,:) = beta(2,:)/sum(beta(2,:));
 end
 
-if isempty(validRowsA) || isempty(validRowsB)
-    % All rows of f_zm_xp are zero
-    
-    % Use the sensor measurements to reassamble particles in regions
-    % meaningful for the sensor values
-    unif = rand(4,N);
-    
-    hA_P = unif(2,:).*2*pi - pi*ones(1,N);
-    if isempty(validRowsA)
+validRowsProbabA = intersect([1;2],validRowsProbab);
+validRowsProbabB = intersect([3;4],validRowsProbab);
 
-        if (sens(1) >= L/2) && (sens(2) >= L/2)
-            % The "measurement circles" of the two sensors intercept 
-            yA = (sens(1)^2-sens(2)^2+L^2)/(2*L);
+%% ------------------------------------------------------------------------
+% Robot A
+%
+if isempty(validRowsSensorA)
+    % Skip measurement update
+    % No sensor measurements available for robot A
+    % Skip measurement update step for robot A  
+    postParticles.x(1,:) = xA_P;
+    postParticles.y(1,:) = yA_P;
+    postParticles.h(1,:) = hA_P;
+else
+    % Measurements available for robot A
+    if ~isempty(validRowsProbabA)
+        % beta for robot A is meaningful an can be taken for resampling
+        % afterwards
+    else
+        % beta for robot A is meaningless
+        % Redistribute particles according to measurement
+        
+        % Assign equal probabililites to all the new distr particles
+        beta(1,:) = 1/N;
+        
+        unif = rand(2,N);
+        hA_P = unif(1,:).*2*pi - pi;
+        
+        if length(validRowsSensorA) == 1
+            % Only 1 sensor measurement for robot A available
 
-            xA1 = (2*L+sqrt(4*L^2-4*(L^2+yA^2-sens(1)^2)))/2;
-            xA2 = (2*L-sqrt(4*L^2-4*(L^2+yA^2-sens(1)^2)))/2;
-
-            if (xA1 >= 0)
-                xA = xA1;
-            elseif (xA2 >= 0)
-                xA = xA2;
+            angle = pi/2*unif(2,:)+pi/2;
+            
+            if intersect(1, validRowsSensorA)
+                % Distribute particles around sensor 1
+                xA_P = sens(1).*cos(angle) + L;
+                yA_P = sens(1).*sin(angle);
+            elseif intersect(2, validRowsSensorA)
+                % Distribute particles around sensor 2
+                xA_P = sens(2).*cos(angle) + L;
+                yA_P = sens(2).*sin(angle) + L;
+                
             else
-                error('The triangulation failed. Invalid use of formula.');
+                error('Invalid state of particles.');
+            end            
+        elseif length(validRowsSensorA) == 2
+            % 2 sensor measurements for robot A available
+            
+            if (sens(1) + sens(2)) >= L
+                % If measurement circles intersect: Distribute particles around circle intersection
+                yA = (sens(1)^2-sens(2)^2+L^2)/(2*L);
+
+                xA1 = (2*L+sqrt(4*L^2-4*(L^2+yA^2-sens(1)^2)))/2; % +
+                xA2 = (2*L-sqrt(4*L^2-4*(L^2+yA^2-sens(1)^2)))/2; % -
+
+                if (xA1 >= 0)
+                    xA = xA1;
+                elseif (xA2 >= 0)
+                    xA = xA2;
+                else
+                    error('The triangulation failed. Invalid use of formula.');
+                end
+
+                xA_P = xA*ones(1,N);
+                yA_P = yA*ones(1,N);
+            else
+                % Distribute particles around the 2 measurment quarter-circles
+                unif = rand(1,N);
+                angle = pi/2*unif+pi/2;
+
+                % Distribute half of particles around sensor 1
+                xA_P(1:N_half) = sens(1).*cos(angle(1:N_half)) + L;
+                yA_P(1:N_half) = sens(1).*sin(angle(1:N_half));
+                % And half of particles around sensor 2
+                xA_P(N_half+1:N) = sens(2).*cos(angle(N_half+1:N)) + L;
+                yA_P(N_half+1:N) = sens(2).*sin(angle(N_half+1:N)) + L; 
             end
-
-            xA_P = xA*ones(1,N);
-            yA_P = yA*ones(1,N);        
         else
-            % The "measurement circles" do not intercept
-            % Assemble half of the particles around quarter-circle of sensor 3
-            % and the others around quarter-circle of sensor 4
-
-            % First half of particles around sensor 1
-            angle = pi/2*unif+pi/2;
-            xA_P(1:N_half) = sens(1).*cos(angle(1,1:N_half)) + L*ones(1,N_half);
-            yA_P(1:N_half) = sens(1).*sin(angle(1,1:N_half));
-
-            % Second half of particles around sensor 2
-            angle = pi/2*unif+pi;
-            xA_P(N_half+1:N) = sens(2).*cos(angle(1,N_half+1:N)) + L*ones(1,N_half);
-            yA_P(N_half+1:N) = sens(2).*sin(angle(1,N_half+1:N)) + L*ones(1,N_half);
+            error('Invalid State of Sensor A');
         end
-        beta(1,:) = 1/N*ones(1,N);
-    end % validRowsA
-    
-    if isempty(validRowsB)
-        hB_P = unif(4,:).*2*pi - pi*ones(1,N);
-        if (sens(3) >= L/2) && (sens(4) >= L/2)
-            % The "measurement circles" of the two sensors intercept
-            yB = (sens(4)^2-sens(3)^2+L^2)/(2*L);
-            xB = sqrt(sens(4)^2-yB);
-
-            xB_P = xB*ones(1,N);
-            yB_P = yB*ones(1,N); 
-        else
-            % The "measurement circles" do not intercept
-            % Assemble half of the particles around quarter-circle of sensor 3
-            % and the others around quarter-circle of sensor 4
-
-            % First half of particles around sensor 3
-            angle = pi/2*unif+3*pi/2;
-            xA_P(1:N_half) = sens(3).*cos(angle(2,1:N_half));
-            yA_P(1:N_half) = sens(3).*sin(angle(2,1:N_half)) + L*ones(1,N_half);
-
-            % Second half of particles around sensor 4
-            angle = pi/2*unif;
-            xA_P(N_half+1:N) = sens(4).*cos(angle(2,N_half+1:N));
-            yA_P(N_half+1:N) = sens(4).*sin(angle(2,N_half+1:N));
-        end
-        beta(2,:) = 1/N*ones(1,N);
-    end % validRowsB
-
-    % Put KC.sbar percent of the particles xA to xB and
-    % KC.sbar percent of the particles from xB to xA
-    permutedInd = randperm(N);
-    deltaInd = ceil(KC.sbar*N);
-
-    xA_P(permutedInd(1:deltaInd))   = xB_P(permutedInd(1:deltaInd));
-    yA_P(permutedInd(1:deltaInd))   = yB_P(permutedInd(1:deltaInd));
-
-    xB_P(permutedInd(N-deltaInd:N)) = xA_P(permutedInd(N-deltaInd:N));
-    yB_P(permutedInd(N-deltaInd:N)) = yA_P(permutedInd(N-deltaInd:N));
+    end
 end
 
+%% ------------------------------------------------------------------------
+% Robot B
+%
+if isempty(validRowsSensorB)
+    % Skip measurement update
+    % No sensor measurements available for robot B
+    % Skip measurement update step for robot B  
+    postParticles.x(2,:) = xB_P;
+    postParticles.y(2,:) = yB_P;
+    postParticles.h(2,:) = hB_P;
+else
+    % Measurements available for robot B
+    if ~isempty(validRowsProbabB)
+        % beta for robot A is meaningful an can be taken for resampling
+        % afterwards
+    else
+        % beta for robot B is meaningless
+        % Redistribute particles according to measurement
+        
+        % Assign equal probabililites to all the new distr particles
+        beta(2,:) = 1/N;
+        
+        unif = rand(2,N);
+        hB_P = unif(1,:).*2*pi - pi;
+        
+        if length(validRowsSensorB) == 1
+            % Only 1 sensor measurement for robot B available
+            angle = pi/2*unif(2,:)+pi/2;
+            
+            if intersect(3, validRowsSensorB)
+                % Distribute particles around sensor 3
+                xB_P = sens(3).*cos(angle);
+                yB_P = sens(3).*sin(angle) + L;
+            elseif intersect(4, validRowsSensorB)
+                % Distribute particles around sensor 4
+                xB_P = sens(4).*cos(angle);
+                yB_P = sens(4).*sin(angle);
+            else
+                error('Invalid state of particles.');
+            end
+        elseif length(validRowsSensorB) == 2
+            % 2 sensor measurements for robot B available
+            
+            if (sens(3) + sens(4)) >= L
+                % If measurement circles intersect: Distribute particles around circle intersection
+                yB = (sens(4)^2-sens(3)^2+L^2)/(2*L);
+                xB = sqrt(sens(4)^2-yB);
+
+                xB_P = xB*ones(1,N);
+                yB_P = yB*ones(1,N);
+            else
+                % Distribute particles around the 2 measurment quarter-circles
+                unif = rand(1,N);
+                angle = pi/2*unif+pi/2;
+
+                % Distribute half of particles around sensor 3
+                xB_P(1:N_half) = sens(3).*cos(angle(1:N_half));
+                yB_P(1:N_half) = sens(3).*sin(angle(1:N_half)) + L;
+                % And half of particles around sensor 4
+                xB_P(N_half+1:N) = sens(4).*cos(angle(N_half+1:N));
+                yB_P(N_half+1:N) = sens(4).*sin(angle(N_half+1:N));
+            end
+        else
+            error('Invalid State of Sensor B');
+        end
+    end
+end
+
+%     % Put KC.sbar percent of the particles xA to xB and
+%     % KC.sbar percent of the particles from xB to xA
+%     permutedInd = randperm(N);
+%     deltaInd = ceil(KC.sbar*N);
+% 
+%     xA_P(permutedInd(1:deltaInd))   = xB_P(permutedInd(1:deltaInd));
+%     yA_P(permutedInd(1:deltaInd))   = yB_P(permutedInd(1:deltaInd));
+% 
+%     xB_P(permutedInd(N-deltaInd:N)) = xA_P(permutedInd(N-deltaInd:N));
+%     yB_P(permutedInd(N-deltaInd:N)) = yA_P(permutedInd(N-deltaInd:N));
+
+
+%% ------------------------------------------------------------------------
 % Resampling
 % ---------------------------------
 % Initialize variables which will be assigned after measurement update
@@ -366,6 +412,7 @@ n_bar = zeros(2,1);
 % cumulative pdf of beta
 for i = 1:N
     r = rand(2,1);
+    
     n_bar(1) = find(cumulativeSum(1,:) >= r(1),1,'first');
     n_bar(2) = find(cumulativeSum(2,:) >= r(2),1,'first');
 
@@ -378,6 +425,7 @@ for i = 1:N
     hB_M(i,1) = hB_P(n_bar(2)); 
 end
 
+%% ------------------------------------------------------------------------
 % Sample Impoverishment: Roughening
 % ----------------------------------
 % Perturb the particles after resampling and assign to new variables

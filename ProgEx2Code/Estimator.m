@@ -77,7 +77,7 @@ dt = KC.ts;
 
 %% Mode 1: Initialization
 % Set number of particles:
-N = 100; % obviously, you will need more particles than 10.    
+N = 1000; % obviously, you will need more particles than 10.    
 N_half = floor(N/2);
 if (init)
     % Initialization of estimator:
@@ -437,34 +437,63 @@ function newHeading = newHeading(oldHeading, oldX, oldY, oldU, noiseV)
     
     % Upper wall:
     upperWallCollInd = intersect(find(oldY >= L), find(oldU*sin(oldHeading) > 0));
-    if true %if ~isempty(upperWallCollInd)
-        bounce = oldHeading(upperWallCollInd); % alpha angle
-        bounce = bounce.*(ones(size(bounce)) + noiseV(upperWallCollInd));
-        newHeading(upperWallCollInd) = -bounce;
+    if ~isempty(upperWallCollInd)
+        specificCollisionType = find(oldU*cos(oldHeading) > 0);
+        if intersect(upperWallCollInd, specificCollisionType)
+            bounce = oldHeading(upperWallCollInd); % alpha angle
+            bounce = bounce.*(1 + noiseV(upperWallCollInd));
+            newHeading(upperWallCollInd) = -bounce;
+        else
+            bounce = oldHeading(upperWallCollInd); % alpha angle
+            bounce = bounce.*(1 + noiseV(upperWallCollInd));
+            newHeading(upperWallCollInd) = -pi + bounce;
+        end
+            
     end
-    
+        
     % Right wall:
     rightWallCollInd = intersect(find(oldX >= L), find(oldU*cos(oldHeading) > 0));
     if ~isempty(rightWallCollInd)
-        bounce = 0.5*pi*ones(size(oldHeading(rightWallCollInd))) - oldHeading(rightWallCollInd);
-        bounce = bounce.*(ones(size(bounce)) + noiseV(rightWallCollInd));
-        newHeading(rightWallCollInd) = 0.5*pi*ones(size(bounce)) + bounce;
+        specificCollisionType = find(oldU*sin(oldHeading) > 0);
+        if intersect(rightWallCollInd, specificCollisionType)
+            bounce = 0.5*pi - oldHeading(rightWallCollInd);
+            bounce = bounce.*(1 + noiseV(rightWallCollInd));
+            newHeading(rightWallCollInd) = 0.5*pi + bounce;
+        else
+            bounce = -(-0.5*pi*ones(size(oldHeading(rightWallCollInd))) - oldHeading(rightWallCollInd));
+            bounce = bounce.*(1 + noiseV(rightWallCollInd));
+            newHeading(rightWallCollInd) = -0.5*pi - bounce;
+        end
     end
     
     % Lower wall:
     lowerWallCollInd = intersect(find(oldY <= 0), find(oldU*sin(oldHeading) < 0));
     if ~isempty(lowerWallCollInd)
-        bounce = -oldHeading(lowerWallCollInd);
-        bounce = bounce.*(ones(size(bounce)) + noiseV(lowerWallCollInd));
-        newHeading(lowerWallCollInd) = bounce;
+        specificCollisionType = find(oldU*cos(oldHeading) > 0);
+        if intersect(lowerWallCollInd, specificCollisionType)
+            bounce = -oldHeading(lowerWallCollInd);
+            bounce = bounce.*(1 + noiseV(lowerWallCollInd));
+            newHeading(lowerWallCollInd) = bounce;
+        else
+            bounce = -(-pi -oldHeading(lowerWallCollInd));
+            bounce = bounce.*(1 + noiseV(lowerWallCollInd));
+            newHeading(lowerWallCollInd) = pi - bounce;
+        end
     end
     
     % Left wall:
     leftWallCollInd = intersect(find(oldX <= 0), find(oldU*cos(oldHeading) < 0));
     if ~isempty(leftWallCollInd)
-        bounce = oldHeading(leftWallCollInd) - 0.5*pi*ones(size(oldHeading(leftWallCollInd)));
-        bounce = bounce.*(ones(size(bounce)) + noiseV(leftWallCollInd));
-        newHeading(leftWallCollInd) = 0.5*pi*ones(size(bounce)) - bounce;
+        specificCollisionType = find(oldU*sin(oldHeading) > 0);
+        if intersect(lowerWallCollInd, specificCollisionType)
+            bounce = oldHeading(leftWallCollInd) - 0.5*pi;
+            bounce = bounce.*(1 + noiseV(leftWallCollInd));
+            newHeading(leftWallCollInd) = 0.5*pi - bounce;
+        else
+            bounce = -(-pi - oldHeading(leftWallCollInd) - 0.5*pi);
+            bounce = bounce.*(ones(size(bounce)) + noiseV(leftWallCollInd));
+            newHeading(leftWallCollInd) = -0.5*pi + bounce;
+        end
     end    
 end
 

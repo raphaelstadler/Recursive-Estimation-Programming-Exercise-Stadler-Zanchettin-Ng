@@ -236,6 +236,8 @@ end
 validRowsProbabA = intersect([1;2],validRowsProbab);
 validRowsProbabB = intersect([3;4],validRowsProbab);
 
+doMeasurementUpdate = ones(2,1);
+
 %% ------------------------------------------------------------------------
 % Robot A
 %
@@ -246,6 +248,8 @@ if isempty(validRowsSensorA)
     postParticles.x(1,:) = xA_P;
     postParticles.y(1,:) = yA_P;
     postParticles.h(1,:) = hA_P;
+    
+    doMeasurementUpdate(1) = 0;
 else
     % Measurements available for robot A
     if ~isempty(validRowsProbabA)
@@ -326,6 +330,8 @@ if isempty(validRowsSensorB)
     postParticles.x(2,:) = xB_P;
     postParticles.y(2,:) = yB_P;
     postParticles.h(2,:) = hB_P;
+    
+    doMeasurementUpdate(2) = 0;
 else
     % Measurements available for robot B
     if ~isempty(validRowsProbabB)
@@ -429,8 +435,19 @@ end
 % Sample Impoverishment: Roughening
 % ----------------------------------
 % Perturb the particles after resampling and assign to new variables
-[postParticles.x(1,:), postParticles.y(1,:), postParticles.h(1,:), ...
- postParticles.x(2,:), postParticles.y(2,:), postParticles.h(2,:)] = performRoughening(xA_M, yA_M, hA_M, xB_M, yB_M, hB_M);
+[xA_M, yA_M, hA_M, ...
+ xB_M, yB_M, hB_M] = performRoughening(xA_M, yA_M, hA_M, xB_M, yB_M, hB_M);
+
+if doMeasurementUpdate(1) == 1
+    postParticles.x(1,:) = xA_M;
+    postParticles.y(1,:) = yA_M;
+    postParticles.h(1,:) = hA_M;
+end
+if doMeasurementUpdate(2) == 1
+    postParticles.x(2,:) = xB_M;
+    postParticles.y(2,:) = yB_M;
+    postParticles.h(2,:) = hB_M;
+end
 
 function newHeading = newHeading(oldHeading, oldX, oldY, oldU, noiseV)
     newHeading = oldHeading;

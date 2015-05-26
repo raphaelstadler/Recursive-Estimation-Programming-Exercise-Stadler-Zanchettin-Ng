@@ -77,7 +77,7 @@ dt = KC.ts;
 
 %% Mode 1: Initialization
 % Set number of particles:
-N = 1000; % obviously, you will need more particles than 10.    
+N = 5000; % obviously, you will need more particles than 10.    
 N_half = floor(N/2);
 if (init)
     % Initialization of estimator:
@@ -130,8 +130,8 @@ vA = drawQuadraticRVSample([1, N]); % draw noise from quadratic pdf for post-bou
 vB = drawQuadraticRVSample([1, N]);
 
 % Initialize variables which will be assigned after prior update
-xA_P = xA; yA_P = yA; hA_P = hA;
-xB_P = xB; yB_P = yB; hB_P = hB;
+% xA_P = xA; yA_P = yA; hA_P = hA;
+% xB_P = xB; yB_P = yB; hB_P = hB;
 
 % DYNAMIC OF THE SYSTEM: Process Equation
 %
@@ -255,6 +255,9 @@ else
     if ~isempty(validRowsProbabA)
         % beta for robot A is meaningful an can be taken for resampling
         % afterwards
+        
+        % TODO: It is also possible that only for 1 of the sensors the
+        % likelihood (beta) is zero
     else
         % beta for robot A is meaningless
         % Redistribute particles according to measurement
@@ -274,18 +277,21 @@ else
                 % Distribute particles around sensor 1
                 xA_P = sens(1).*cos(angle) + L;
                 yA_P = sens(1).*sin(angle);
+                
+                % TODO: Perform KC.sbar part of the particles should be sampled from (xB_P, yB_P)
             elseif intersect(2, validRowsSensorA)
                 % Distribute particles around sensor 2
                 xA_P = sens(2).*cos(angle) + L;
                 yA_P = sens(2).*sin(angle) + L;
                 
+                % TODO: Perform KC.sbar part of the particles should be sampled from (xB_P, yB_P)
             else
                 error('Invalid state of particles.');
             end            
         elseif length(validRowsSensorA) == 2
             % 2 sensor measurements for robot A available
-            
             if (sens(1) + sens(2)) >= L
+                doMeasurementUpdate(1) = 0;
                 % If measurement circles intersect: Distribute particles around circle intersection
                 yA = (sens(1)^2-sens(2)^2+L^2)/(2*L);
 
@@ -364,7 +370,6 @@ else
             end
         elseif length(validRowsSensorB) == 2
             % 2 sensor measurements for robot B available
-            
             if (sens(3) + sens(4)) >= L
                 % If measurement circles intersect: Distribute particles around circle intersection
                 yB = (sens(4)^2-sens(3)^2+L^2)/(2*L);
@@ -372,6 +377,7 @@ else
 
                 xB_P = xB*ones(1,N);
                 yB_P = yB*ones(1,N);
+                doMeasurementUpdate(2) = 0;
             else
                 % Distribute particles around the 2 measurment quarter-circles
                 unif = rand(1,N);
@@ -564,7 +570,7 @@ function [xA_r, yA_r, hA_r, xB_r, yB_r, hB_r] = performRoughening(xA, yA, hA, xB
     completeMatrix = [xA';yA';hA';xB';yB';hB'];
 
     % K: tuning parameter
-    K = 0.3;
+    K = 0.001;
     % D: Dimension of state space
     D = 6;
     % E_i: maximim inter-sample variability

@@ -147,7 +147,7 @@ yB_P = yB + dt*(uB*sin(hB));
 
 %% Step 2 (S2): A posteriori update/Measurement update step
 
-% if true % Uncomment this, to skip measurement update completely
+%if true % Uncomment this, to skip measurement update completely
 if sens == Inf*ones(size(sens))
     % No sensor measurements available:
     % Completely skip measurement update step   
@@ -192,8 +192,8 @@ for sensId = 1:4
     % Using actual measurements sens
     % Note, that in the case where not all sensor measurements were
     % available, sens(.) contains another meaningful value.
-    f_zm_xp(sensId,:) = GetProbabilityOutOfTriangularPDF(sens(sensId), z_noiseFree_correctRobot(sensId,:)).*(1-KC.sbar) + ...
-                        GetProbabilityOutOfTriangularPDF(sens(sensId), z_noiseFree_wrongRobot(sensId,:)).*KC.sbar;
+    f_zm_xp(sensId,:) = GetProbabilityOutOfTriangularPDF(z_noiseFree_correctRobot(sensId,:), sens(sensId)).*(1-KC.sbar) + ...
+                        GetProbabilityOutOfTriangularPDF(z_noiseFree_wrongRobot(sensId,:), sens(sensId)).*KC.sbar;
 end
 
 % Calculate normalization constants alphas - size(alpha): 4 x 1
@@ -205,8 +205,6 @@ end
 % Note: Row sum of f_zm_xp can be zero, which results in alpha = NaN
 alpha_test = 1./sum(f_zm_xp,2);
 validRowsProbab = find(alpha_test ~= Inf & ~isnan(alpha_test));
-%sumNotEqualsZero = find(sum(f_zm_xp, 2) > 0.001);
-%validRowsProbab = intersect(validRowsProbab, sumNotEqualsZero);
 
 validRowsProbabA = intersect([1;2],validRowsProbab);
 validRowsProbabB = intersect([3;4],validRowsProbab);
@@ -260,24 +258,26 @@ else
         beta(1,:) = 1/N;
         
         unif = rand(2,N);
-        hA_P = unif(1,:).*2*pi - pi;
+        %hA_P = unif(1,:).*2*pi - pi;
         
         if length(validRowsSensorA) == 1
             % Only 1 sensor measurement for robot A available
-            angle = pi/2*unif(2,:)+pi/2;
+            angle = zeros(2,N);
+            angle(1,:) = pi/2*unif(1,:)+pi/2;
+            angle(2,:) = pi/2*unif(2,:)-pi;
             
             rR = drawTriangularRVSample([2,N]);
             
             if intersect(1, validRowsSensorA)
                 % Distribute particles around sensor 1
-                xA_P = (sens(1)+rR(1,:)).*cos(angle) + L;
-                yA_P = (sens(1)+rR(1,:)).*sin(angle);
+                xA_P = (sens(1)+rR(1,:)).*cos(angle(1,:)) + L;
+                yA_P = (sens(1)+rR(1,:)).*sin(angle(1,:));
                 
                 % TODO: Perform KC.sbar part of the particles should be sampled from (xB_P, yB_P)
             elseif intersect(2, validRowsSensorA)
                 % Distribute particles around sensor 2
-                xA_P = (sens(2)+rR(2,:)).*cos(angle) + L;
-                yA_P = (sens(2)+rR(2,:)).*sin(angle) + L;
+                xA_P = (sens(2)+rR(2,:)).*cos(angle(2,:)) + L;
+                yA_P = (sens(2)+rR(2,:)).*sin(angle(2,:)) + L;
                 
                 % TODO: Perform KC.sbar part of the particles should be sampled from (xB_P, yB_P)
             else
@@ -285,43 +285,53 @@ else
             end            
         elseif length(validRowsSensorA) == 2
              % 2 sensor measurements for robot A available
-            if (sens(1) + sens(2)) >= L                
-                % If measurement circles intersect: Distribute particles around circle intersection
-                yA = (sens(1)^2-sens(2)^2+L^2)/(2*L);
+  
+             if (sens(1) + sens(2)) >= L  
+                  
+                postParticles.x(1,:) = xA_P;
+                postParticles.y(1,:) = yA_P;
+                postParticles.h(1,:) = hA_P;
 
-                xA1 = (2*L+sqrt(4*L^2-4*(L^2+yA^2-sens(1)^2)))/2; % +
-                xA2 = (2*L-sqrt(4*L^2-4*(L^2+yA^2-sens(1)^2)))/2; % -
-
-                if (xA1 >= 0 && xA1 <= L)
-                    xA = xA1;
-                elseif (xA2 >= 0 && xA2 <= L)
-                    xA = xA2;
-                else
-                    error('The triangulation failed. Invalid use of formula.');
-                end
-
-                xA_P = xA*ones(1,N);
-                yA_P = yA*ones(1,N);
-
-                % Add noise / blur
-                rA = sqrt(xA_P.^2 + yA_P.^2);
-                gamma = asin(yA_P ./ rA);
-                rR = drawTriangularRVSample([1, N]);
-                
-                xA_P = (rA + rR).*cos(gamma);
-                yA_P = (rA + rR).*sin(gamma);
+                doMeasurementUpdate(1) = 0;
+%                 % If measurement circles intersect: Distribute particles around circle intersection
+%                 yA = (sens(1)^2-sens(2)^2+L^2)/(2*L);
+% 
+%                 xA1 = (2*L+sqrt(4*L^2-4*(L^2+yA^2-sens(1)^2)))/2; % +
+%                 xA2 = (2*L-sqrt(4*L^2-4*(L^2+yA^2-sens(1)^2)))/2; % -
+% 
+%                 if (xA1 >= 0 && xA1 <= L)
+%                     xA = xA1;
+%                 elseif (xA2 >= 0 && xA2 <= L)
+%                     xA = xA2;
+%                 else
+%                     error('The triangulation failed. Invalid use of formula.');
+%                 end
+% 
+%                 xA_P = xA*ones(1,N);
+%                 yA_P = yA*ones(1,N);
+% 
+%                 % Add noise / blur
+%                 rA = sqrt(xA_P.^2 + yA_P.^2);
+%                 gamma = asin(yA_P ./ rA);
+%                 rR = drawTriangularRVSample([1, N]);
+%                 
+%                 xA_P = (rA + rR).*cos(gamma);
+%                 yA_P = (rA + rR).*sin(gamma);
             else
                 % Distribute particles around the 2 measurment quarter-circles
-                unif = rand(1,N);
-                angle = pi/2*unif+pi/2;
+                unif = rand(2,N);
+                angle = zeros(2,N);
+                
+                angle(1,:) = pi/2*unif(1,:)+pi/2;
+                angle(2,:) = pi/2*unif(2,:)-pi/2;
                 rR = drawTriangularRVSample([2,N]);
 
                 % Distribute half of particles around sensor 1
-                xA_P(1:N_half) = (sens(1)+rR(1,1:N_half)).*cos(angle(1:N_half)) + L;
-                yA_P(1:N_half) = (sens(1)+rR(1,1:N_half)).*sin(angle(1:N_half));
+                xA_P(1:N_half) = (sens(1)+rR(1,1:N_half)).*cos(angle(1,1:N_half)) + L;
+                yA_P(1:N_half) = (sens(1)+rR(1,1:N_half)).*sin(angle(1,1:N_half));
                 % And half of particles around sensor 2
-                xA_P(N_half+1:N) = (sens(2)+rR(2,N_half+1:N)).*cos(angle(N_half+1:N)) + L;
-                yA_P(N_half+1:N) = (sens(2)+rR(2,N_half+1:N)).*sin(angle(N_half+1:N)) + L; 
+                xA_P(N_half+1:N) = (sens(2)+rR(2,N_half+1:N)).*cos(angle(2,N_half+1:N)) + L;
+                yA_P(N_half+1:N) = (sens(2)+rR(2,N_half+1:N)).*sin(angle(2,N_half+1:N)) + L; 
             end
         else
             error('Invalid State of Sensor A');
@@ -354,54 +364,67 @@ else
         beta(2,:) = 1/N;
         
         unif = rand(2,N);
-        hB_P = unif(1,:).*2*pi - pi;
+        %hB_P = unif(1,:).*2*pi - pi;
         
         if length(validRowsSensorB) == 1
             % Only 1 sensor measurement for robot B available
-            angle = pi/2*unif(2,:)+pi/2;
+            %angle = pi/2*unif(2,:)+pi/2;
+            angle = zeros(2,N);
+            angle(1,:) = pi/2*unif(1,:);
+            angle(2,:) = pi/2*unif(2,:)-pi/2;
             
             rR = drawTriangularRVSample([2,N]);
             
             if intersect(3, validRowsSensorB)
                 % Distribute particles around sensor 3
-                xB_P = (sens(3)+rR(1,:)).*cos(angle);
-                yB_P = (sens(3)+rR(1,:)).*sin(angle) + L;
+                xB_P = (sens(3)+rR(1,:)).*cos(angle(1,:));
+                yB_P = (sens(3)+rR(1,:)).*sin(angle(1,:)) + L;
             elseif intersect(4, validRowsSensorB)
                 % Distribute particles around sensor 4
-                xB_P = (sens(4)+rR(2,:)).*cos(angle);
-                yB_P = (sens(4)+rR(2,:)).*sin(angle);
+                xB_P = (sens(4)+rR(2,:)).*cos(angle(2,:));
+                yB_P = (sens(4)+rR(2,:)).*sin(angle(2,:));
             else
                 error('Invalid state of particles.');
             end
-        elseif length(validRowsSensorB) == 2    
+        elseif length(validRowsSensorB) == 2     
             % 2 sensor measurements for robot B available
             if (sens(3) + sens(4)) >= L
-                % If measurement circles intersect: Distribute particles around circle intersection
-                yB = (sens(4)^2-sens(3)^2+L^2)/(2*L);
-                xB = sqrt(sens(4)^2-yB);
+                postParticles.x(2,:) = xB_P;
+                postParticles.y(2,:) = yB_P;
+                postParticles.h(2,:) = hB_P;
 
-                xB_P = xB*ones(1,N);
-                yB_P = yB*ones(1,N);
+                doMeasurementUpdate(2) = 0;
                 
-                % Add noise / blur
-                rB = sqrt(xB_P.^2 + yB_P.^2);
-                gamma = asin(yB_P ./ rB);
-                rR = drawTriangularRVSample([1, N]);
-                
-                xB_P = (rB + rR).*cos(gamma);
-                yB_P = (rB + rR).*sin(gamma);
+%                 % If measurement circles intersect: Distribute particles around circle intersection
+%                 yB = (sens(4)^2-sens(3)^2+L^2)/(2*L);
+%                 xB = sqrt(sens(4)^2-yB);
+% 
+%                 xB_P = xB*ones(1,N);
+%                 yB_P = yB*ones(1,N);
+%                 
+%                 % Add noise / blur
+%                 rB = sqrt(xB_P.^2 + yB_P.^2);
+%                 gamma = asin(yB_P ./ rB);
+%                 rR = drawTriangularRVSample([1, N]);
+%                 
+%                 xB_P = (rB + rR).*cos(gamma);
+%                 yB_P = (rB + rR).*sin(gamma);
             else
                 % Distribute particles around the 2 measurment quarter-circles
-                unif = rand(1,N);
-                angle = pi/2*unif+pi/2;
+                unif = rand(2,N);
+                angle = zeros(2,N);
+                
+                angle(1,:) = pi/2*unif(1,:)-pi/2;
+                angle(2,:) = pi/2*unif(2,:);
+                
                 rR = drawTriangularRVSample([2,N]);
 
                 % Distribute half of particles around sensor 3
-                xB_P(1:N_half) = (sens(3)+rR(1,1:N_half)).*cos(angle(1:N_half));
-                yB_P(1:N_half) = (sens(3)+rR(1,1:N_half)).*sin(angle(1:N_half)) + L;
+                xB_P(1:N_half) = (sens(3)+rR(1,1:N_half)).*cos(angle(1,1:N_half));
+                yB_P(1:N_half) = (sens(3)+rR(1,1:N_half)).*sin(angle(1,1:N_half)) + L;
                 % And half of particles around sensor 4
-                xB_P(N_half+1:N) = (sens(4)+rR(2,N_half+1:N)).*cos(angle(N_half+1:N));
-                yB_P(N_half+1:N) = (sens(4)+rR(2,N_half+1:N)).*sin(angle(N_half+1:N));
+                xB_P(N_half+1:N) = (sens(4)+rR(2,N_half+1:N)).*cos(angle(2,N_half+1:N));
+                yB_P(N_half+1:N) = (sens(4)+rR(2,N_half+1:N)).*sin(angle(2,N_half+1:N));
             end
         else
             error('Invalid State of Sensor B');
@@ -439,11 +462,6 @@ for i = 1:N
     r = rand(2,1);
     
     if doMeasurementUpdate(1) == 1        
-        a = find(cumulativeSum(1,:) >= r(1),1,'first');
-        if isempty(a)
-            c = sum(beta(1,:));
-            b = 1;
-        end
         n_bar(1) = find(cumulativeSum(1,:) >= r(1),1,'first');
         xA_M(i) = xA_P(n_bar(1));
         yA_M(i) = yA_P(n_bar(1));
@@ -542,21 +560,21 @@ function newHeading = newHeading(oldHeading, oldX, oldY, oldU, noiseV)
 end
 
 function probab = GetProbabilityOutOfTriangularPDF(centerOfPDF,evaluationPoint)
-    % Note: Function is designed to handle scalar centerOfPDF, and vector valued evaluationPoint
-    probab = zeros(size(evaluationPoint));
+    % Note: Function is designed to handle vector valued centerOfPDF, and scalar valued evaluationPoint
+    probab = zeros(size(centerOfPDF));
     
     linearIncrInd = find(evaluationPoint >= (centerOfPDF - KC.wbar) & ...
                          evaluationPoint < centerOfPDF);
     if ~isempty(linearIncrInd)
         % linear INCREASING
-        probab(linearIncrInd) = 1/(KC.wbar^2)*(evaluationPoint(linearIncrInd)-centerOfPDF)+1./KC.wbar;
+        probab(linearIncrInd) = 1/(KC.wbar^2)*(evaluationPoint-centerOfPDF(linearIncrInd))+1./KC.wbar;
     end
     
     linearDecrInd = find(evaluationPoint >= centerOfPDF & ...
                          evaluationPoint <= (centerOfPDF + KC.wbar));
     if ~isempty(linearDecrInd)
         % linear DECREASING
-        probab(linearDecrInd) = -1/(KC.wbar^2)*(evaluationPoint(linearDecrInd)-centerOfPDF)+1./KC.wbar;
+        probab(linearDecrInd) = -1/(KC.wbar^2)*(evaluationPoint-centerOfPDF(linearDecrInd))+1./KC.wbar;
     end
 end
 

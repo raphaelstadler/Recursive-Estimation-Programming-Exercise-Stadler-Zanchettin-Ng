@@ -129,10 +129,6 @@ uA = act(1); uB = act(2);
 vA = drawQuadraticRVSample([1, N]); % draw noise from quadratic pdf for post-bounce angles
 vB = drawQuadraticRVSample([1, N]);
 
-% Initialize variables which will be assigned after prior update
-% xA_P = xA; yA_P = yA; hA_P = hA;
-% xB_P = xB; yB_P = yB; hB_P = hB;
-
 % DYNAMIC OF THE SYSTEM: Process Equation
 %
 % Propagate N particles x_m through process dynamics, to get new
@@ -196,8 +192,8 @@ for sensId = 1:4
     % Using actual measurements sens
     % Note, that in the case where not all sensor measurements were
     % available, sens(.) contains another meaningful value.
-    f_zm_xp(sensId,:) = GetProbabilityOutOfTriangularPDF(z_noiseFree_correctRobot(sensId,:),sens(sensId)).*(1-KC.sbar) + ...
-                        GetProbabilityOutOfTriangularPDF(z_noiseFree_wrongRobot(sensId,:),sens(sensId)).*KC.sbar;
+    f_zm_xp(sensId,:) = GetProbabilityOutOfTriangularPDF(sens(sensId), z_noiseFree_correctRobot(sensId,:)).*(1-KC.sbar) + ...
+                        GetProbabilityOutOfTriangularPDF(sens(sensId), z_noiseFree_wrongRobot(sensId,:)).*KC.sbar;
 end
 
 % Calculate normalization constants alphas - size(alpha): 4 x 1
@@ -220,15 +216,17 @@ beta(1,:) = prod(diag(alpha1)*f_zm_xp(validRowsProbabA,:),1);
 alpha2 = 1./sum(f_zm_xp(validRowsProbabB,:),2);
 beta(2,:) = prod(diag(alpha2)*f_zm_xp(validRowsProbabB,:),1);
 
-betaNotEqualsZero = find(sum(beta, 2) > 0);
+sumOfBetaNotEqualsZero = find(sum(beta, 2) > 0);
 
-if (~intersect(1, betaNotEqualsZero)) % beta(1,:) is not > 0
+if (~intersect(1, sumOfBetaNotEqualsZero) | isempty(alpha1)) % beta(1,:) is not > 0
     validRowsProbab = intersect(validRowsProbab, [3;4]);
+    beta(1,:) = zeros(1,N);
 else
     beta(1,:) = beta(1,:)/sum(beta(1,:));
 end
-if (~intersect(2, betaNotEqualsZero)) % beta(2,:) is not > 0
+if (~intersect(2, sumOfBetaNotEqualsZero) | isempty(alpha2)) % beta(2,:) is not > 0
     validRowsProbab = intersect(validRowsProbab, [1;2]);
+    beta(2,:) = zeros(1,N);
 else
     beta(2,:) = beta(2,:)/sum(beta(2,:));
 end
@@ -425,16 +423,19 @@ n_bar = zeros(2,1);
 for i = 1:N
     r = rand(2,1);
     
-    n_bar(1) = find(cumulativeSum(1,:) >= r(1),1,'first');
-    n_bar(2) = find(cumulativeSum(2,:) >= r(2),1,'first');
-
-    xA_M(i,1) = xA_P(n_bar(1));
-    yA_M(i,1) = yA_P(n_bar(1));
-    hA_M(i,1) = hA_P(n_bar(1));
-
-    xB_M(i,1) = xB_P(n_bar(2));
-    yB_M(i,1) = yB_P(n_bar(2));
-    hB_M(i,1) = hB_P(n_bar(2)); 
+    if doMeasurementUpdate(1) == 1        
+        n_bar(1) = find(cumulativeSum(1,:) >= r(1),1,'first');
+        xA_M(i,1) = xA_P(n_bar(1));
+        yA_M(i,1) = yA_P(n_bar(1));
+        hA_M(i,1) = hA_P(n_bar(1));    
+    end
+    
+    if doMeasurementUpdate(2) == 1
+        n_bar(2) = find(cumulativeSum(2,:) >= r(2),1,'first');
+        xB_M(i,1) = xB_P(n_bar(2));
+        yB_M(i,1) = yB_P(n_bar(2));
+        hB_M(i,1) = hB_P(n_bar(2)); 
+    end
 end
 
 %% ------------------------------------------------------------------------
@@ -521,21 +522,21 @@ function newHeading = newHeading(oldHeading, oldX, oldY, oldU, noiseV)
 end
 
 function probab = GetProbabilityOutOfTriangularPDF(centerOfPDF,evaluationPoint)
-    % Note: Function is designed to handle vector valued centerOfPDF, and scalar evaluationPoint
-    probab = zeros(size(centerOfPDF));
+    % Note: Function is designed to handle scalar centerOfPDF, and vector valued evaluationPoint
+    probab = zeros(size(evaluationPoint));
     
     linearIncrInd = find(evaluationPoint >= (centerOfPDF - KC.wbar) & ...
                          evaluationPoint < centerOfPDF);
     if ~isempty(linearIncrInd)
         % linear INCREASING
-        probab(linearIncrInd) = 1/(KC.wbar^2)*(evaluationPoint-centerOfPDF(linearIncrInd))+1./KC.wbar;
+        probab(linearIncrInd) = 1/(KC.wbar^2)*(evaluationPoint(linearIncrInd)-centerOfPDF)+1./KC.wbar;
     end
     
     linearDecrInd = find(evaluationPoint >= centerOfPDF & ...
                          evaluationPoint <= (centerOfPDF + KC.wbar));
     if ~isempty(linearDecrInd)
         % linear DECREASING
-        probab(linearDecrInd) = -1/(KC.wbar^2)*(evaluationPoint-centerOfPDF(linearDecrInd))+1./KC.wbar;
+        probab(linearDecrInd) = -1/(KC.wbar^2)*(evaluationPoint(linearDecrInd)-centerOfPDF)+1./KC.wbar;
     end
 end
 

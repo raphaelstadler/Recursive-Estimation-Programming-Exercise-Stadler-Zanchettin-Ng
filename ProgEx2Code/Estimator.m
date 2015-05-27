@@ -205,8 +205,8 @@ end
 % Note: Row sum of f_zm_xp can be zero, which results in alpha = NaN
 alpha_test = 1./sum(f_zm_xp,2);
 validRowsProbab = find(alpha_test ~= Inf & ~isnan(alpha_test));
-sumNotEqualsZero = find(sum(f_zm_xp, 2) > 0);
-validRowsProbab = intersect(validRowsProbab, sumNotEqualsZero);
+%sumNotEqualsZero = find(sum(f_zm_xp, 2) > 0.001);
+%validRowsProbab = intersect(validRowsProbab, sumNotEqualsZero);
 
 validRowsProbabA = intersect([1;2],validRowsProbab);
 validRowsProbabB = intersect([3;4],validRowsProbab);
@@ -216,17 +216,15 @@ beta(1,:) = prod(diag(alpha1)*f_zm_xp(validRowsProbabA,:),1);
 alpha2 = 1./sum(f_zm_xp(validRowsProbabB,:),2);
 beta(2,:) = prod(diag(alpha2)*f_zm_xp(validRowsProbabB,:),1);
 
-if (isempty(alpha1)) % beta(1,:) is not > 0
+sumCloseToOne = sum(beta, 2) > 0.9;
+
+if (isempty(alpha1) || (sumCloseToOne(1) ~= 1)) % beta(1,:) is not > 0
     validRowsProbab = intersect(validRowsProbab, [3;4]);
     beta(1,:) = zeros(1,N);
-else
-    beta(1,:) = beta(1,:)/sum(beta(1,:));
 end
-if (isempty(alpha2)) % beta(2,:) is not > 0
+if (isempty(alpha2) || (sumCloseToOne(2) ~= 1)) % beta(2,:) is not > 0
     validRowsProbab = intersect(validRowsProbab, [1;2]);
     beta(2,:) = zeros(1,N);
-else
-    beta(2,:) = beta(2,:)/sum(beta(2,:));
 end
 
 validRowsProbabA = intersect([1;2],validRowsProbab);
@@ -294,9 +292,9 @@ else
                 xA1 = (2*L+sqrt(4*L^2-4*(L^2+yA^2-sens(1)^2)))/2; % +
                 xA2 = (2*L-sqrt(4*L^2-4*(L^2+yA^2-sens(1)^2)))/2; % -
 
-                if (xA1 >= 0)
+                if (xA1 >= 0 && xA1 <= L)
                     xA = xA1;
-                elseif (xA2 >= 0)
+                elseif (xA2 >= 0 && xA2 <= L)
                     xA = xA2;
                 else
                     error('The triangulation failed. Invalid use of formula.');
@@ -441,6 +439,11 @@ for i = 1:N
     r = rand(2,1);
     
     if doMeasurementUpdate(1) == 1        
+        a = find(cumulativeSum(1,:) >= r(1),1,'first');
+        if isempty(a)
+            c = sum(beta(1,:));
+            b = 1;
+        end
         n_bar(1) = find(cumulativeSum(1,:) >= r(1),1,'first');
         xA_M(i) = xA_P(n_bar(1));
         yA_M(i) = yA_P(n_bar(1));
@@ -562,7 +565,7 @@ function qRV = drawQuadraticRVSample(size)
     u = rand(size);
     c = 3/(2*(KC.vbar^3));
     qRV = zeros(size);
-    for index = 1:size
+    for index = 1:size(2)
         if (3/c)*u(index) - KC.vbar^3 > 0
             qRV(index) = abs(((3/c)*u(index) - KC.vbar^3)^(1/3));
         else
@@ -612,7 +615,7 @@ function tRV = drawTriangularRVSample(size)
     b = KC.wbar;
     c = 0;
     tRV = zeros(size);
-    for ind = 1:size
+    for ind = 1:size(2)
         if u(ind) < (c-a)/(b-a)
             tRV(ind) = a + sqrt(u(ind)*(b-a)*(c-a));
         else

@@ -248,8 +248,6 @@ else
         % beta for robot A is meaningful an can be taken for resampling
         % afterwards
         
-        % TODO: It is also possible that only for 1 of the sensors the
-        % likelihood (beta) is zero
     else
         % beta for robot A is meaningless
         % Redistribute particles according to measurement
@@ -258,7 +256,6 @@ else
         beta(1,:) = 1/N;
         
         unif = rand(2,N);
-        %hA_P = unif(1,:).*2*pi - pi;
         
         if length(validRowsSensorA) == 1
             % Only 1 sensor measurement for robot A available
@@ -273,57 +270,64 @@ else
                 xA_P = (sens(1)+rR(1,:)).*cos(angle(1,:)) + L;
                 yA_P = (sens(1)+rR(1,:)).*sin(angle(1,:));
                 
-                % TODO: Perform KC.sbar part of the particles should be sampled from (xB_P, yB_P)
             elseif intersect(2, validRowsSensorA)
                 % Distribute particles around sensor 2
                 xA_P = (sens(2)+rR(2,:)).*cos(angle(2,:)) + L;
-                yA_P = (sens(2)+rR(2,:)).*sin(angle(2,:)) + L;
-                
-                % TODO: Perform KC.sbar part of the particles should be sampled from (xB_P, yB_P)
+                yA_P = (sens(2)+rR(2,:)).*sin(angle(2,:)) + L;   
             else
                 error('Invalid state of particles.');
-            end            
+            end
+            
+            validIndices = intersect(find(xA_P >= 0 & xA_P <= L), find(yA_P >= 0 & yA_P <= L));
+            
+            if isempty(validIndices)
+            end
+            
+            xA_TooSmall = xA_P(validIndices);
+            yA_TooSmall = yA_P(validIndices);
+            
+            vSize = size(validIndices,2);
+            xA_P(1:vSize) = xA_TooSmall;
+            yA_P(1:vSize) = yA_TooSmall;
+            
+            for i = vSize+1:N
+                rInd = randi([1 vSize],1,1);
+                xA_P(i) = xA_TooSmall(rInd);
+                yA_P(i) = yA_TooSmall(rInd);
+            end
+            
         elseif length(validRowsSensorA) == 2
-             % 2 sensor measurements for robot A available
-  
-             if (sens(1) + sens(2)) >= L  
-                  
-                postParticles.x(1,:) = xA_P;
-                postParticles.y(1,:) = yA_P;
-                postParticles.h(1,:) = hA_P;
+            % 2 sensor measurements for robot A available
 
-                doMeasurementUpdate(1) = 0;
-%                 % If measurement circles intersect: Distribute particles around circle intersection
-%                 yA = (sens(1)^2-sens(2)^2+L^2)/(2*L);
-% 
-%                 xA1 = (2*L+sqrt(4*L^2-4*(L^2+yA^2-sens(1)^2)))/2; % +
-%                 xA2 = (2*L-sqrt(4*L^2-4*(L^2+yA^2-sens(1)^2)))/2; % -
-% 
-%                 if (xA1 >= 0 && xA1 <= L)
-%                     xA = xA1;
-%                 elseif (xA2 >= 0 && xA2 <= L)
-%                     xA = xA2;
-%                 else
-%                     error('The triangulation failed. Invalid use of formula.');
-%                 end
-% 
-%                 xA_P = xA*ones(1,N);
-%                 yA_P = yA*ones(1,N);
-% 
-%                 % Add noise / blur
-%                 rA = sqrt(xA_P.^2 + yA_P.^2);
-%                 gamma = asin(yA_P ./ rA);
-%                 rR = drawTriangularRVSample([1, N]);
-%                 
-%                 xA_P = (rA + rR).*cos(gamma);
-%                 yA_P = (rA + rR).*sin(gamma);
+            % If measurement circles intersect: Distribute particles around circle intersection
+            validIntersectionFound = false;
+            yA = (sens(1)^2-sens(2)^2+L^2)/(2*L);
+            xA = L - sqrt(sens(1)^2-yA^2);
+            
+            if (yA >= 0) && (yA <= L) && isreal(xA)
+                if (xA >= 0 && xA <= L)
+                    validIntersectionFound = true;
+                end
+            end
+
+            if validIntersectionFound
+                xA_P = xA*ones(1,N);
+                yA_P = yA*ones(1,N);
+             
+                % Add noise / blur
+                rA = sqrt(xA_P.^2 + yA_P.^2);
+                gamma = asin(yA_P ./ rA);
+                rR = drawTriangularRVSample([1, N]);
+                
+                xA_P = (rA + rR).*cos(gamma);
+                yA_P = (rA + rR).*sin(gamma);
             else
                 % Distribute particles around the 2 measurment quarter-circles
                 unif = rand(2,N);
                 angle = zeros(2,N);
                 
                 angle(1,:) = pi/2*unif(1,:)+pi/2;
-                angle(2,:) = pi/2*unif(2,:)-pi/2;
+                angle(2,:) = pi/2*unif(2,:)-pi;
                 rR = drawTriangularRVSample([2,N]);
 
                 % Distribute half of particles around sensor 1
@@ -332,6 +336,20 @@ else
                 % And half of particles around sensor 2
                 xA_P(N_half+1:N) = (sens(2)+rR(2,N_half+1:N)).*cos(angle(2,N_half+1:N)) + L;
                 yA_P(N_half+1:N) = (sens(2)+rR(2,N_half+1:N)).*sin(angle(2,N_half+1:N)) + L; 
+                
+                validIndices = intersect(find(xA_P >= 0 & xA_P <= L), find(yA_P >= 0 & yA_P <= L));
+                xA_TooSmall = xA_P(validIndices);
+                yA_TooSmall = yA_P(validIndices);
+
+                vSize = size(validIndices,2);
+                xA_P(1:vSize) = xA_TooSmall;
+                yA_P(1:vSize) = yA_TooSmall;
+
+                for i = vSize+1:N
+                    rInd = randi([1 vSize],1,1);
+                    xA_P(i) = xA_TooSmall(rInd);
+                    yA_P(i) = yA_TooSmall(rInd);
+                end                
             end
         else
             error('Invalid State of Sensor A');
@@ -364,14 +382,13 @@ else
         beta(2,:) = 1/N;
         
         unif = rand(2,N);
-        %hB_P = unif(1,:).*2*pi - pi;
         
         if length(validRowsSensorB) == 1
             % Only 1 sensor measurement for robot B available
             %angle = pi/2*unif(2,:)+pi/2;
             angle = zeros(2,N);
-            angle(1,:) = pi/2*unif(1,:);
-            angle(2,:) = pi/2*unif(2,:)-pi/2;
+            angle(1,:) = pi/2*unif(1,:)-pi/2;
+            angle(2,:) = pi/2*unif(2,:);
             
             rR = drawTriangularRVSample([2,N]);
             
@@ -386,29 +403,46 @@ else
             else
                 error('Invalid state of particles.');
             end
+            
+            validIndices = intersect(find(xB_P >= 0 & xB_P <= L), find(yB_P >= 0 & yB_P <= L));
+            xB_TooSmall = xB_P(validIndices);
+            yB_TooSmall = yB_P(validIndices);
+            
+            vSize = size(validIndices,2);
+            xB_P(1:vSize) = xB_TooSmall;
+            yB_P(1:vSize) = yB_TooSmall;
+            
+            for i = vSize+1:N
+                rInd = randi([1 vSize],1,1);
+                xB_P(i) = xB_TooSmall(rInd);
+                yB_P(i) = yB_TooSmall(rInd);
+            end
+            
         elseif length(validRowsSensorB) == 2     
             % 2 sensor measurements for robot B available
-            if (sens(3) + sens(4)) >= L
-                postParticles.x(2,:) = xB_P;
-                postParticles.y(2,:) = yB_P;
-                postParticles.h(2,:) = hB_P;
+            
+            validIntersectionFound = false;
+            yB = (sens(4)^2-sens(3)^2+L^2)/(2*L);
+            xB = sqrt(sens(4)^2-yB^2);
+            
+            if (yB >= 0) && (yB <= L) && isreal(xB)
+                if (xB >= 0 && xB <= L)
+                    validIntersectionFound = true;
+                end
+            end
 
-                doMeasurementUpdate(2) = 0;
+            if validIntersectionFound          
+                % If measurement circles intersect: Distribute particles around circle intersection
+                xB_P = xB*ones(1,N);
+                yB_P = yB*ones(1,N);
                 
-%                 % If measurement circles intersect: Distribute particles around circle intersection
-%                 yB = (sens(4)^2-sens(3)^2+L^2)/(2*L);
-%                 xB = sqrt(sens(4)^2-yB);
-% 
-%                 xB_P = xB*ones(1,N);
-%                 yB_P = yB*ones(1,N);
-%                 
-%                 % Add noise / blur
-%                 rB = sqrt(xB_P.^2 + yB_P.^2);
-%                 gamma = asin(yB_P ./ rB);
-%                 rR = drawTriangularRVSample([1, N]);
-%                 
-%                 xB_P = (rB + rR).*cos(gamma);
-%                 yB_P = (rB + rR).*sin(gamma);
+                % Add noise / blur
+                rB = sqrt(xB_P.^2 + yB_P.^2);
+                gamma = asin(yB_P ./ rB);
+                rR = drawTriangularRVSample([1, N]);
+                
+                xB_P = (rB + rR).*cos(gamma);
+                yB_P = (rB + rR).*sin(gamma);
             else
                 % Distribute particles around the 2 measurment quarter-circles
                 unif = rand(2,N);
@@ -425,6 +459,22 @@ else
                 % And half of particles around sensor 4
                 xB_P(N_half+1:N) = (sens(4)+rR(2,N_half+1:N)).*cos(angle(2,N_half+1:N));
                 yB_P(N_half+1:N) = (sens(4)+rR(2,N_half+1:N)).*sin(angle(2,N_half+1:N));
+                
+                validIndices = intersect(find(xB_P >= 0 & xB_P <= L), find(yB_P >= 0 & yB_P <= L));
+                
+                xB_TooSmall = xB_P(validIndices);
+                yB_TooSmall = yB_P(validIndices);
+
+                vSize = size(validIndices,2);
+                xB_P(1:vSize) = xB_TooSmall;
+                yB_P(1:vSize) = yB_TooSmall;
+
+                for i = vSize+1:N
+                    rInd = randi([1 vSize],1,1);
+                    xB_P(i) = xB_TooSmall(rInd);
+                    yB_P(i) = yB_TooSmall(rInd);
+                end
+                
             end
         else
             error('Invalid State of Sensor B');
